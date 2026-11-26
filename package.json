@@ -12,6 +12,7 @@
     "predev": "node scripts/build-srd.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.7.5",
     "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
     "dompurify": "^3.5.0",
     "idb-keyval": "^6.3.0",

@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>Ask bench</title></head>
+  <body>
+    <pre id="out">running…</pre>
+    <script type="module">
+      import { env, pipeline } from '@huggingface/transformers';
+      env.allowRemoteModels = false;
+      env.allowLocalModels = true;
+      env.localModelPath = '/models/';
+      env.backends.onnx.wasm.wasmPaths = '/ort/';
+      env.backends.onnx.wasm.numThreads = 1;
+      const out = [];
+      const log = (s) => { out.push(s); document.getElementById('out').textContent = out.join('\n'); };
+      const t = () => performance.now();
+      try {
+        let t0 = t();
+        const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5', { dtype: 'q8' });
+        log(`embed model load ${(t() - t0).toFixed(0)} ms`);
+        const q = 'Represent this sentence for searching relevant passages: how does grappling work?';
+        await embed(q, { pooling: 'cls', normalize: true });
+        t0 = t();
+        for (let i = 0; i < 10; i++) await embed(q, { pooling: 'cls', normalize: true });
+        log(`query embedding ${((t() - t0) / 10).toFixed(1)} ms avg`);
+        const passages = Array.from({ length: 32 }, (_, i) => `Grapple ${i}: To start a grapple, you need to grab and hold your target. Starting a grapple requires a successful melee attack roll. If you get multiple attacks, you can attempt to start a grapple multiple times.`);
+        t0 = t();
+        await embed(passages, { pooling: 'cls', normalize: true });
+        log(`32 passages ${(t() - t0).toFixed(0)} ms`);
+
+        t0 = t();
+        const qa = await pipeline('question-answering', 'Xenova/distilbert-base-cased-distilled-squad', { dtype: 'q8' });
+        log(`QA model load ${(t() - t0).toFixed(0)} ms`);
+        const ctx = 'Elminster Aumar, the Sage of Shadowdale, is a human wizard of great age and power. He was born in 212 DR in the village of Heldon in Athalantar. His alignment is chaotic good. He has served the goddess Mystra as one of her Chosen for centuries, and he dwells in a tower in Shadowdale. ' .repeat(3);
+        await qa('Where does Elminster live?', ctx);
+        t0 = t();
+        let ans;
+        for (let i = 0; i < 5; i++) ans = await qa('Where does Elminster live?', ctx);
+        log(`QA per passage ${((t() - t0) / 5).toFixed(0)} ms  answer: ${JSON.stringify(ans)}`);
+        log('DONE');
+      } catch (e) {
+        log('ERROR ' + e.message);
+      }
+    </script>
+  </body>
+</html>
