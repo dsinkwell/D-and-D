@@ -55,7 +55,15 @@ STAT_LABELS = ('Level', 'Components', 'Casting Time', 'Range', 'Target', 'Target
                'Base Attack/Grapple', 'Attack', 'Full Attack', 'Space/Reach', 'Special Attacks', 'Special Qualities', 'Saves',
                'Abilities', 'Skills', 'Feats', 'Environment', 'Organization', 'Challenge Rating', 'Treasure', 'Advancement',
                'Level Adjustment', 'Prerequisite', 'Price (Item Level)', 'Discipline', 'Display', 'Manifesting Time', 'Power Points')
-LABEL_RE = re.compile(r'\s(<b>(?:' + '|'.join(re.escape(x) for x in STAT_LABELS) + r'):</b>)')
+ITEM_LABELS = ('Price (Item Level)', 'Price', 'Body Slot', 'Caster Level', 'Aura', 'Activation', 'Weight', 'Property', 'Prerequisites',
+               'Cost to Create', 'Level', 'Components', 'Casting Time', 'Range', 'Target', 'Targets', 'Effect', 'Area', 'Duration',
+               'Saving Throw', 'Spell Resistance', 'Hit Dice', 'Initiative', 'Speed', 'Armor Class', 'Base Attack/Grapple', 'Attack',
+               'Full Attack', 'Space/Reach', 'Special Attacks', 'Special Qualities', 'Saves', 'Abilities', 'Skills', 'Feats',
+               'Environment', 'Organization', 'Challenge Rating', 'Treasure', 'Alignment', 'Advancement', 'Level Adjustment')
+_lab = '|'.join(re.escape(x) for x in sorted(ITEM_LABELS, key=len, reverse=True))
+PLAIN_LABEL_START = re.compile(r'^(?:' + _lab + r')\s*:')
+PLAIN_LABEL_RE = re.compile(r'(?<![\w(])(' + _lab + r')\s*:')
+LABEL_RE = re.compile(r'\s(<b>\s*(?:' + '|'.join(re.escape(x) for x in STAT_LABELS) + r')\s*:\s*</b>)')
 
 
 def esc(s):
@@ -104,7 +112,11 @@ def block_html(e, anchor=None):
             out.append(f'<tr>{cells}</tr>')
         out.append('</table>')
         return ''.join(out)
-    html = LABEL_RE.sub(r'<br>\1', e['html'])
+    html = e['html']
+    if '<b>' not in html and PLAIN_LABEL_START.match(e['text']):
+        # stat block whose labels aren't bold (OCR'd or plain-set): bold them, one per line
+        html = PLAIN_LABEL_RE.sub(lambda m: ('<br>' if m.start() > 0 else '') + f'<b>{m.group(1)}:</b>', html)
+    html = LABEL_RE.sub(r'<br>\1', html)
     return f'<p>{html}</p>'
 
 
@@ -247,7 +259,8 @@ def process_book(book_id, stream):
         own_text = ' '.join(element_text(stream[j]) for j in range(i + 1, own_end))
         if not own_text.strip() and end == i + 1:
             continue  # empty heading
-        kind = detect_kind(e['title'], own_text, child_titles) if lvl > 1 else 'rule'  # chapters are sections
+        # chapters are sections (but a scanned book without an outline has one section per page)
+        kind = detect_kind(e['title'], own_text, child_titles) if lvl > 1 or re.match(r'^Page \d+$', e['title']) else 'rule'
         summary = ''
         for j in range(i + 1, own_end):
             if stream[j]['t'] == 'p' and len(stream[j]['text']) > 60 and not re.match(r'^[A-Z][A-Za-z ()/]+:', stream[j]['text']) and not re.search(r'\b(Body Slot|Caster Level|Aura|Activation):', stream[j]['text'][:200]):
@@ -267,8 +280,30 @@ def process_book(book_id, stream):
             'start': i, 'end': end, 'summary': summary, 'meta': meta, 'text': own_text,
         })
     mark_prestige_classes(stream, entries)
+    flatten_leaf_entries(entries)
     entries = add_run_in_entries(stream, blocks, entries, used)
     return blocks, entries
+
+
+LEAF_KINDS = {'feat', 'spell', 'item', 'trap', 'power'}
+
+
+def flatten_leaf_entries(entries):
+    """A feat, spell or item never contains another one. When a book sets consecutive feats
+    in two heading sizes, the smaller ones looked like sub-sections of the previous feat: end
+    the entry where the next leaf entry starts, and make that one a sibling."""
+    for k, e in enumerate(entries):
+        if e['kind'] not in LEAF_KINDS:
+            continue
+        for f in entries[k + 1:]:
+            if f['start'] >= e['end']:
+                break
+            if f['kind'] in LEAF_KINDS and f['level'] > e['level']:
+                e['end'] = f['start']
+                f['level'] = e['level']
+                f['parent'] = e['parent']
+                f['path'] = e['path']
+                break
 
 
 RUN_IN = re.compile(r'^(?:<i>)?<b>\s*([^<]{2,70}?)\s*(?:</b>)?\s*(?:</i>)?\s*[:.]\s*(?:</b>)?|^(?:<i>)?<b>\s*([^<]{2,70}?)[:.]\s*</b>')
@@ -490,7 +525,8 @@ def main():
             if os.path.exists(path):
                 doc = pymupdf.open(path)
                 for pg in doc:
-                    for w in re.findall(r"[A-Za-zÀ-ÿ]+(?:['’][a-z]+)?", pg.get_text()):
+                    text = pg.get_text().translate(str.maketrans({'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl'}))
+                    for w in re.findall(r"[A-Za-zÀ-ÿ]+(?:['’][a-z]+)?", text):
                         words[w.lower()] += 1
         os.makedirs(BUILD, exist_ok=True)
         with open(vocab_path, 'w') as f:

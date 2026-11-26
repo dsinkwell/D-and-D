@@ -1,29 +1,29 @@
 {
   "name": "books",
-  "version": "20261126T0607",
-  "built": "2026-11-26T06:07:11.805Z",
-  "dbBytes": 37138432,
-  "sha256": "7bfd3ade5209ae9ecb63fe0f9defc0e65614910985567724a6a397108999d8c8",
+  "version": "20261126T0802",
+  "built": "2026-11-26T08:02:22.722Z",
+  "dbBytes": 37335040,
+  "sha256": "078d37fd193713c461f14c3af32ed4da9fa5585cb433f772798d1637f26ac76f",
   "parts": [
     {
       "file": "part-000.bin",
-      "bytes": 12155995
+      "bytes": 12221377
     },
     {
       "file": "part-001.bin",
-      "bytes": 9325252
+      "bytes": 9236466
     },
     {
       "file": "part-002.bin",
-      "bytes": 2100745
+      "bytes": 2206538
     }
   ],
   "bookCount": 27,
   "encryption": {
     "kdf": "PBKDF2-SHA256",
     "iterations": 600000,
-    "salt": "V2BVbHO8JWWrjpOJyf+AjQ==",
-    "check": "jhi2hy9valgGzG/2Y14UN8yE4tC1fTl8/oWnZIXYVdRY4GixEM9cNGuNTaIZusWWauZhtXQ="
+    "salt": "zpUAZ7oennfQyUK2g5rkiw==",
+    "check": "QV8gwh1y8hu59db1GHQJQ4fEphLAX1MCGJHETygys/Jy1Yrnx9uKHmfodxZGMdfybqRIo7I="
   },
-  "downloadBytes": 23581992
+  "downloadBytes": 23664381
 }

@@ -20,7 +20,7 @@ CREDIT = re.compile(r'^(Illus(tration|\.)? by|Art by|Cartography by|Map by)\b', 
 PAGE_NUM = re.compile(r'^\s*\d{1,3}\s*$')
 DISPLAY_FONT = re.compile(r'Pterra|Democratica|Caps|SC-|Historical|Mason|Trajan|Copperplate|Albertus|Lithos', re.I)
 BOLD = re.compile(r'Bold|Semibo|Semibold|Black|Heavy|Demi', re.I)
-ITALIC = re.compile(r'Italic|Oblique|-It\b|MediumIt', re.I)
+ITALIC = re.compile(r'Ital|Oblique|-It\b|MediumIt|Kursiv', re.I)
 TABLE_FONT = re.compile(r'ScalaSans|Arial|Helvetica|Frutiger|Futura|Optima', re.I)
 
 
@@ -64,7 +64,30 @@ def page_lines_pdf(page):
             x0 = min(l['bbox'][0] for l in lines); x1 = max(l['bbox'][2] for l in lines)
             y0 = min(l['bbox'][1] for l in lines); y1 = max(l['bbox'][3] for l in lines)
             blocks.append({'lines': lines, 'bbox': (x0, y0, x1, y1)})
-    return order_blocks(blocks, W, H), W, H
+    return coalesce_rows(order_blocks(blocks, W, H), W), W, H
+
+
+def coalesce_rows(lines, W):
+    """Table cells often come out as separate lines at the same height (“1st”, “+1”, “+2”…).
+    Join side-by-side fragments of a table row into one line, so the gaps between them mark
+    the cells. Only table-font or short fragments are joined, never two text columns."""
+    out = []
+    for l in lines:
+        if out:
+            p = out[-1]
+            same_row = abs(l['bbox'][1] - p['bbox'][1]) < 2.0 and abs(l['bbox'][3] - p['bbox'][3]) < 3.0
+            to_right = l['bbox'][0] >= p['bbox'][2] - 1 and l['bbox'][0] - p['bbox'][2] < W * 0.3
+            tabley = all(TABLE_FONT.search(s['font']) for s in l['spans'] + p['spans']) or (
+                (l['bbox'][2] - l['bbox'][0]) < W * 0.22 and (p['spans'][-1]['bbox'][2] - p['spans'][-1]['bbox'][0]) < W * 0.22)
+            if same_row and to_right and tabley:
+                if not p['spans'][-1]['text'].endswith(' ') and not l['spans'][0]['text'].startswith(' '):
+                    l['spans'][0] = {**l['spans'][0], 'text': ' ' + l['spans'][0]['text']}
+                p['spans'] = p['spans'] + l['spans']
+                p['bbox'] = (p['bbox'][0], min(p['bbox'][1], l['bbox'][1]), l['bbox'][2], max(p['bbox'][3], l['bbox'][3]))
+                p['text'] = ''.join(s['text'] for s in p['spans']).strip()
+                continue
+        out.append(l)
+    return out
 
 
 def respace_line(line):
@@ -99,6 +122,31 @@ def set_vocabulary(words):
     """Known-good words (built from the text-based rulebooks) used to judge OCR lines."""
     VOCAB.clear()
     VOCAB.update(words)
+
+
+LIGATURE_CHARS = str.maketrans({'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st'})
+LIG_SPLIT = re.compile(r"\b([A-Za-z]*(?:fi|fl|ff|ffi|ffl)) ([a-z]+)\b")
+
+
+def fix_ligatures(text):
+    """Some PDFs set “fi”/“fl” as one glyph followed by a gap, so words come out as
+    “Benefi t”, “Refl ex”, “spellfi re”. Rejoin when the result is a known word."""
+    if not text:
+        return text
+    text = text.translate(LIGATURE_CHARS)
+    if not VOCAB:
+        return text
+    def join(m):
+        a, b = m.group(1), m.group(2)
+        w = (a + b).lower()
+        # The left part always ends in the ligature letters; only a small connecting word on the
+        # right (“staff of”, “cliff and”) is left alone.
+        if a.lower() not in ('fi', 'fl', 'ff', 'ffi', 'ffl') and b in ('of', 'and', 'or', 'to', 'in', 'on', 'at', 'as', 'is', 'it', 'the', 'a', 'an', 'by', 'for', 'with'):
+            return m.group(0)
+        if w in VOCAB or (w.endswith('s') and w[:-1] in VOCAB):
+            return a + b
+        return m.group(0)
+    return LIG_SPLIT.sub(join, text.replace('ı', 'i'))
 
 
 def word_quality(text):
@@ -173,13 +221,13 @@ def order_blocks(blocks, W, H):
             cols.append([x])
     # Keep only real columns: enough blocks/lines start there, and columns are well apart.
     min_count = max(2, int(len(narrow) * 0.08))
-    # A column's edge is where most of its blocks start (the median), not its leftmost member:
+    # A column's edge is where its blocks start (a low percentile), not its leftmost member:
     # a page number or running header just left of a column must not drag the edge over.
     starts = []
-    for c in sorted(cols, key=lambda c: sorted(c)[len(c) // 2]):
+    for c in sorted(cols, key=lambda c: sorted(c)[len(c) // 5]):
         if len(c) < min_count:
             continue
-        edge = sorted(c)[len(c) // 2]
+        edge = sorted(c)[len(c) // 5]  # 20th percentile: ignores a stray page number, not indented lines
         if starts and edge - starts[-1] < W * 0.2:
             continue
         starts.append(edge)
@@ -282,6 +330,11 @@ def learn_styles(pages):
 
 # ---------------------------------------------------------------------------- stream building
 
+STAT_START = re.compile(r'^(Level|Components|Casting Time|Range|Targets?|Effect|Area|Duration|Saving Throw|Spell Resistance|'
+                        r'Hit Dice|Initiative|Speed|Armor Class|Base Attack/Grapple|Attack|Full Attack|Space/Reach|Special Attacks|'
+                        r'Special Qualities|Saves|Abilities|Skills|Feats|Environment|Organization|Challenge Rating|Treasure|Alignment|'
+                        r'Advancement|Level Adjustment|Price(?: \(Item Level\))?|Body Slot|Caster Level|Aura|Activation|Weight|Property|'
+                        r'Discipline|Manifesting Time|Display|Power Points)\s*:')
 LEAD_FONTS = set()
 
 
@@ -338,7 +391,10 @@ def split_cells(line):
         last_x1 = s['bbox'][2]
     if cur:
         cells.append(''.join(x['text'] for x in cur).strip())
-    return [c for c in cells]
+    out = []
+    for c in cells:
+        out.extend(x for x in re.split(r'\s{2,}', c) if x)  # “Fort  Ref  Will” set in one run
+    return out
 
 
 def build_stream(pages, body_size, levels, page_offset=0, toc=None):
@@ -363,7 +419,7 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
         if para:
             text = re.sub(r'\s+', ' ', para['text']).strip()
             if text:
-                stream.append({'t': 'p', 'html': re.sub(r'\s+', ' ', para['html']).strip(), 'text': text, 'page': para['page']})
+                stream.append({'t': 'p', 'html': fix_ligatures(re.sub(r'\s+', ' ', para['html']).strip()), 'text': fix_ligatures(text), 'page': para['page']})
         para = None
 
     table = None
@@ -377,33 +433,28 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 stream.append({'t': 'p', 'html': esc(' '.join(r)), 'text': ' '.join(r), 'page': table['page']})
         table = None
 
-    import difflib
-    def norm(t):
-        return re.sub(r'[^a-z]', '', t.lower())
+    placements = place_bookmarks(pages, toc, levels, page_offset) if toc else {}
 
     for pi, (lines, W, H) in enumerate(pages):
         pno = pi + 1 + page_offset
         prev_bottom = None
-        # Bookmark headings (scanned books): put each at its best-matching line on the page.
-        pending = {}
-        if toc:
-            for lvl_t, title in toc.get(pno, []):
-                best, best_r = None, 0.0
-                for li, l in enumerate(lines):
-                    r = difflib.SequenceMatcher(None, norm(title), norm(l['text'])[:len(norm(title)) + 8]).ratio()
-                    if r > best_r:
-                        best, best_r = li, r
-                key = best if best_r >= 0.62 else -1
-                pending.setdefault(key, []).append((lvl_t, title, best_r >= 0.62))
-            for lvl_t, title, _ in pending.pop(-1, []):
-                flush(); flush_table()
-                stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno})
+        # Bookmark headings: each at the line that prints it (see place_bookmarks).
+        pending = dict(placements.get(pno, {}))
+        for lvl_t, title, _ in pending.pop(-1, []):
+            flush(); flush_table()
+            stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno, 'bm': True})
+        skip_until = -1
         for li, l in enumerate(lines):
+            if li <= skip_until:
+                continue
             if li in pending:
                 flush(); flush_table()
-                for lvl_t, title, _ in pending[li]:
-                    stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno})
-                prev_bottom = l['bbox'][3]
+                used = 1
+                for lvl_t, title, n in pending[li]:
+                    stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno, 'bm': True})
+                    used = max(used, n)
+                skip_until = li + used - 1
+                prev_bottom = lines[skip_until]['bbox'][3]
                 continue  # the matched line is the heading itself
             text = l['text'].strip()
             y0, y1 = l['bbox'][1], l['bbox'][3]
@@ -420,7 +471,8 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 prev_bottom = y1
                 continue
             if re.match(r'^\[[A-Za-z ,\-]+\]$', text) and para is None and table is None and stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno:
-                stream[-1]['text'] += ' ' + text  # “[General]” set on its own line under a feat name
+                if not re.search(r'\[[^\]]+\]\s*$', stream[-1]['text']):
+                    stream[-1]['text'] += ' ' + text  # “[General]” set on its own line under a feat name
                 prev_bottom = y1
                 continue
             st = line_style(l)
@@ -429,6 +481,8 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 lvl = None  # OCR: only clean, short, capitalised lines can be headings
             if lvl and re.match(r'^(chapter\s+)?\d{1,2}:?$', text, re.I):
                 continue  # bare chapter numbers ("11", "CHAPTER 3:") are decoration
+            if lvl and (re.fullmatch(r'[pqrs\s]+', text) or not re.search(r'[aeiouyAEIOUY0-9]', text)):
+                continue  # ornament glyphs set in a dingbat font (“pqqqqrs”)
             if lvl and para is None and table is None and re.match(r'^\([^)]{3,40}\)$', text) and stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno:
                 stream[-1]['text'] += ' ' + text
                 prev_bottom = y1
@@ -449,7 +503,8 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 prev_bottom = y1
                 continue
             if re.match(r'^\[[A-Za-z ,]+\]$', text) and stream and stream[-1]['t'] == 'h':
-                stream[-1]['text'] += ' ' + text
+                if not re.search(r'\[[^\]]+\]\s*$', stream[-1]['text']):
+                    stream[-1]['text'] += ' ' + text
                 continue
             if is_table_line(l, body_size):
                 flush()
@@ -479,8 +534,24 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
         # page boundary: tables never continue across pages
         flush_table()
     flush(); flush_table()
+    # Stat lines (“Range: …”, “Target: …”) split into separate paragraphs by column breaks
+    # belong to one stat block.
+    merged = []
+    for e in stream:
+        if (e['t'] == 'p' and merged and merged[-1]['t'] == 'p' and STAT_START.match(e['text'])
+                and STAT_START.match(merged[-1]['text']) and len(merged[-1]['text']) < 600):
+            merged[-1]['text'] += ' ' + e['text']
+            merged[-1]['html'] += ' ' + e['html']
+            continue
+        merged.append(e)
+    stream[:] = merged
     for e in stream:
         e.pop('_y', None)
+        e.pop('bm', None)
+        if e['t'] in ('h', 'cap'):
+            e['text'] = fix_ligatures(e['text'])
+        elif e['t'] == 'table':
+            e['rows'] = [[fix_ligatures(c) for c in r] for r in e['rows']]
     return stream
 
 
@@ -574,18 +645,137 @@ def chapter_bookmarks(raw):
     return []
 
 
+def full_outline(raw):
+    """The PDF's bookmark outline as (level, title, page), level 1 = chapters. Wrapper levels
+    (the book's own title, covers, contents) are dropped; in books whose chapters are named
+    “Chapter …”, stray bookmarks filed at chapter level are moved one level down."""
+    rows = [(lvl, re.sub(r'\s+', ' ', title).strip(), page) for lvl, title, page in raw if page > 0]
+    rows = [r for r in rows if r[1] and not JUNK_BOOKMARK.match(r[1])]
+    while rows:
+        top = min(r[0] for r in rows)
+        at = [r for r in rows if r[0] == top]
+        if len(at) <= 3 and any(r[0] > top for r in rows):
+            rows = [r for r in rows if r[0] != top]
+            continue
+        break
+    if not rows:
+        return []
+    # Bookmarks that point backwards in the book are filing mistakes (PHB's “Enlarge” among
+    # the “F” spells): drop them.
+    # Keep the longest run of bookmarks that moves forward through the book. Bookmarks that
+    # point backwards (PHB's trailing list of tables, MM's "Alphabetical listing" spike,
+    # stray "Enlarge") are cross-references, not structure.
+    import bisect
+    tails, tails_idx, prev_idx = [], [], [-1] * len(rows)
+    for i, r in enumerate(rows):
+        k = bisect.bisect_right(tails, r[2])
+        if k == len(tails):
+            tails.append(r[2]); tails_idx.append(i)
+        else:
+            tails[k] = r[2]; tails_idx[k] = i
+        prev_idx[i] = tails_idx[k - 1] if k > 0 else -1
+    keep, i = [], tails_idx[-1] if tails_idx else -1
+    while i >= 0:
+        keep.append(i)
+        i = prev_idx[i]
+    rows = [rows[i] for i in sorted(keep)]
+    if not rows:
+        return []
+    base = min(r[0] for r in rows)
+    top = [r for r in rows if r[0] == base]
+    chapterish = re.compile(r'(?i)^(chapter|part|appendix|introduction|glossary|general guidelines|preface|foreword|epilogue|afterword)\b')
+    demote = sum(1 for r in top if re.match(r'(?i)^chapter\b', r[1])) >= 4
+    out = []
+    for lvl, title, page in rows:
+        level = lvl - base + 1
+        if demote and level == 1 and not chapterish.match(title):
+            level = 2
+        out.append((level, title, page))
+    return out
+
+
+def _norm(t):
+    return re.sub(r'[^a-z0-9]', '', t.lower())
+
+
+def place_bookmarks(pages, toc, levels, page_offset=0):
+    """Put each bookmark at the line that prints it.
+
+    Candidates are lines whose text matches the title; a line in a heading style scores much
+    higher than a mention in body text, and among equals the next unused line after the
+    previous bookmark wins (so repeated titles like “Combat” go to successive monsters). A
+    bookmark with no match on its page is tried on the next page after that page's own
+    bookmarks (some outlines point a page early), else it goes at the top of its page.
+    Returns {page: {line_index | -1: [(level, title, n_lines_used)]}}."""
+    import difflib
+    out = {}
+    carry = {}
+
+    def match(lines, texts, styles, used, title, after, strict):
+        nt = _norm(title)
+        best, best_s, best_n = None, 0.0, 1
+        if not nt:
+            return None, 1
+        for li, t in enumerate(texts):
+            if li in used or not t:
+                continue
+            r1 = difflib.SequenceMatcher(None, nt, t[:len(nt) + 6]).ratio()
+            r2 = 0.0
+            if len(t) < len(nt) and li + 1 < len(texts):
+                r2 = difflib.SequenceMatcher(None, nt, (t + texts[li + 1])[:len(nt) + 6]).ratio()
+            r, n = (r2, 2) if r2 > r1 + 0.05 else (r1, 1)
+            if r < 0.66:
+                continue
+            heading = styles[li] in levels
+            if strict and not heading and r < 0.9:
+                continue
+            score = r + (0.6 if heading else 0) + (0.15 if li > after else 0) + (0.1 if t == nt else 0)
+            if score > best_s + 1e-6:
+                best, best_s, best_n = li, score, n
+        return best, best_n
+
+    for pi, (lines, W, H) in enumerate(pages):
+        pno = pi + 1 + page_offset
+        own = list(toc.get(pno, []))
+        carried = carry.pop(pno, [])
+        if not own and not carried:
+            continue
+        texts = [_norm(l['text']) for l in lines]
+        styles = [line_style(l) for l in lines]
+        used = set()
+        place = out.setdefault(pno, {})
+        last = -1
+        for lvl, title in own:
+            li, n = match(lines, texts, styles, used, title, last, False)
+            if li is not None:
+                place.setdefault(li, []).append((lvl, title, n))
+                used.update(range(li, li + n))
+                last = li
+            elif pi + 1 < len(pages):
+                carry.setdefault(pno + 1, []).append((lvl, title))
+            else:
+                place.setdefault(-1, []).append((lvl, title, 0))
+        for lvl, title in carried:
+            li, n = match(lines, texts, styles, used, title, -1, True)
+            if li is not None:
+                place.setdefault(li, []).append((lvl, title, n))
+                used.update(range(li, li + n))
+            else:
+                place.setdefault(-1, []).insert(0, (lvl, title, 0))
+    return out
+
+
 def extract(pdf_path=None, ocr_path=None, page_offset=0, words_path=None):
     toc = None
     if ocr_path:
         data = json.load(open(ocr_path))
         pages = [page_lines_ocr(p) for p in data['pages']]
         if pdf_path:
-            raw = [t for t in pymupdf.open(pdf_path).get_toc() if t[2] > 0 and not re.match(r'(?i)^(my bookmarks|front cover|back cover|table of contents|contents)$', t[1].strip())]
-            if len(raw) >= 15:
-                base = min(t[0] for t in raw)
+            outline = full_outline(pymupdf.open(pdf_path).get_toc())
+            if len(outline) >= 15:
                 toc = {}
-                for lvl, title, page in raw:
-                    toc.setdefault(page, []).append((min(lvl - base + 1, 6), title.strip()))
+                for lvl, title, page in outline:
+                    toc.setdefault(page, []).append((lvl, title))
     else:
         doc = pymupdf.open(pdf_path)
         pages = [page_lines_pdf(doc[i]) for i in range(doc.page_count)]
@@ -594,14 +784,22 @@ def extract(pdf_path=None, ocr_path=None, page_offset=0, words_path=None):
             pages = [(overlay_words(lines, wpages[i].get('words') or []), W, H) for i, (lines, W, H) in enumerate(pages)]
     body_size, levels = learn_styles(pages)
     if not ocr_path and pdf_path:
-        chapters = chapter_bookmarks(pymupdf.open(pdf_path).get_toc())
-        if chapters:
-            # Chapters come from the PDF's bookmarks (chapter titles are often artwork); the
-            # headings found on the page nest one level below them.
+        outline = full_outline(pymupdf.open(pdf_path).get_toc())
+        if len(outline) >= 40:
+            # The book's own outline gives chapters, sections and often every entry; headings
+            # found from font sizes nest below its deepest level.
             toc = {}
-            for page, title in chapters:
-                toc.setdefault(page, []).append((1, title))
-            levels = {k: min(v + 1, 6) for k, v in levels.items()}
+            for lvl, title, page in outline:
+                toc.setdefault(page, []).append((lvl, title))
+            depth = max(l for l, _, _ in outline)
+            levels = {k: depth + v for k, v in levels.items()}
+        else:
+            chapters = chapter_bookmarks(pymupdf.open(pdf_path).get_toc())
+            if chapters:
+                toc = {}
+                for page, title in chapters:
+                    toc.setdefault(page, []).append((1, title))
+                levels = {k: v + 1 for k, v in levels.items()}
     body_font = collections.Counter(s['font'] for lines, W, H in pages for l in lines for s in l['spans']).most_common(1)[0][0]
     learn_lead_fonts(pages, body_font)
     if ocr_path:
