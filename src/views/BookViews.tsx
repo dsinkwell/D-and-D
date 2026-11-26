@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookmarkButton, Header, Icon, Loading, Notice } from '../components';
+import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton } from '../components';
+import { formatEntry } from '../lib/statblock';
 import { recordVisit } from '../lib/bookmarks';
 import {
   BOOK_KIND_LABEL,
@@ -207,29 +208,29 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
   if (!entry || html === null) return <Loading />;
 
   const m = entry.meta || {};
+  const isRef = entry.kind !== 'rule';
+  const label = BOOK_KIND_LABEL[entry.kind];
+  const mark = { key: `bk:${book}/${anchor}`, source: 'book' as const, title: entry.title, subtitle: `${label} · ${info?.short ?? book} p. ${entry.page}`, href: bookEntryHref(entry), kind: entry.kind };
+  const facts = [m.ftype && `${m.ftype} feat`, m.price, m.slot && `Slot: ${m.slot}`, m.portfolio && `Portfolio: ${m.portfolio}`].filter(Boolean);
   return (
     <article className="page entry">
       <Header
-        title={entry.title}
-        subtitle={
+        title={isRef ? `${label}: ${entry.title}` : entry.title}
+        actions={
           <>
-            {entry.kind !== 'rule' && <span className={`cat cat-${entry.kind === 'deity' ? 'class' : entry.kind}`}>{BOOK_KIND_LABEL[entry.kind]}</span>}{' '}
-            <a href={`#/book/${book}`}>{info?.title}</a>, p. {entry.page}
-            {entry.path ? ` · ${entry.path}` : ''}
+            <BookmarkButton mark={mark} />
+            <ShareButton title={entry.title} />
           </>
         }
-        actions={<BookmarkButton mark={{ key: `bk:${book}/${anchor}`, source: 'book', title: entry.title, subtitle: `${info?.short ?? book} p. ${entry.page}`, href: bookEntryHref(entry) }} />}
       />
-      {(m.cr || m.price || m.ftype || m.portfolio) && (
-        <div className="meta-strip">
-          {m.cr && <span>CR {m.cr}</span>}
-          {m.ctype && <span>{[m.size, m.ctype].filter(Boolean).join(' ')}</span>}
-          {m.price && <span>{m.price}</span>}
-          {m.slot && <span>Slot: {m.slot}</span>}
-          {m.ftype && <span>{m.ftype}</span>}
-          {m.portfolio && <span>Portfolio: {m.portfolio}</span>}
+      <div className="entry-head">
+        <h1 className="entry-title">{entry.title}</h1>
+        <div className="entry-source">
+          <a href={`#/book/${book}`}>{info?.title}</a>, p. {entry.page}
+          {entry.path ? ` · ${entry.path}` : ''}
         </div>
-      )}
+        {isRef && facts.length > 0 && <div className="entry-source">{facts.join(' · ')}</div>}
+      </div>
       {also.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">Also in:</span>
@@ -240,7 +241,10 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
           ))}
         </div>
       )}
-      <div className="content book" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">(This heading has no text of its own — see the sections below.)</p>' }} />
+      <div
+        className={`content ${isRef ? 'ref' : 'book'}`}
+        dangerouslySetInnerHTML={{ __html: (isRef ? formatEntry(html || '', entry.kind) : html) || '<p class="muted">(This heading has no text of its own — see the sections below.)</p>' }}
+      />
       <nav className="prev-next">
         {nav.prev ? (
           <a className="btn subtle" href={bookEntryHref(nav.prev)}>

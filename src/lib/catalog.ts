@@ -95,6 +95,9 @@ async function build(kind: Category): Promise<CatalogItem[]> {
     const books = new Map((await listBuiltInBooks()).map((b) => [b.id, b]));
     for (const { entry } of await entriesOfKind(bk)) {
       const b = books.get(entry.book);
+      // adventure-site areas ("10. Chamber of the Thief-King (EL 12)") and table captions
+      // ("2–30: The Reaping Mauler") carry stat blocks but aren't entries of their own
+      if (/^\d+[.)]\s|^\d+[–-]\d+:|\(EL \d/.test(entry.title)) continue;
       if (b && nameKey(entry.title)) addBook(get(entry.title, kind === 'trap' && entry.meta?.cr ? ` cr${entry.meta.cr}` : ''), entry, b);
     }
   }
@@ -117,7 +120,7 @@ function addSrd(it: CatalogItem, e: Entry) {
   it.ctype ??= m.ctype?.replace(/\s*\(.*$/, '') || m.type;
   it.cr ??= m.cr;
   it.price ??= m.price;
-  it.itemKind ??= m.kind?.replace(/ Descriptions?$/, '').replace(/^Specific /, '');
+  it.itemKind ??= m.kind ? itemKindName(m.kind) : undefined;
   it.discipline ??= m.Discipline?.replace(/\s*\(.*$/, '').trim();
 }
 
@@ -132,11 +135,42 @@ function addBook(it: CatalogItem, e: BookEntry, b: BookInfo) {
   it.cr ??= m.cr;
   it.price ??= m.price;
   it.portfolio ??= m.portfolio;
+  if (it.kind === 'item' && !it.itemKind) it.itemKind = itemKindName(`${e.path || ''} › ${e.parent || ''}`);
+}
+
+/** Short item type for list prefixes: "Wondrous Item", "Ring", "Armor property"… from an SRD
+ * kind ("Magic Armor and Shield Special Ability") or a book section path ("… › Rings"). */
+export function itemKindName(src: string): string | undefined {
+  const s = src.toLowerCase();
+  const rules: [RegExp, string][] = [
+    [/armor and shield special abilit|armor special abilit|armor propert/, 'Armor property'],
+    [/weapon special abilit|weapon propert/, 'Weapon property'],
+    [/wondrous/, 'Wondrous Item'],
+    [/\bcursed/, 'Cursed Item'],
+    [/\bartifact/, 'Artifact'],
+    [/\brings?\b/, 'Ring'],
+    [/\brods?\b/, 'Rod'],
+    [/\bstaffs?\b|\bstaves\b/, 'Staff'],
+    [/\bwands?\b/, 'Wand'],
+    [/\bpotions?\b|\boils?\b/, 'Potion'],
+    [/\bscrolls?\b/, 'Scroll'],
+    [/\bshields?\b/, 'Shield'],
+    [/\barmors?\b/, 'Armor'],
+    [/\bweapons?\b|\bammunition\b/, 'Weapon'],
+    [/\bclothing\b/, 'Wondrous Item'],
+    [/\btools?\b/, 'Wondrous Item'],
+    [/\bintelligent/, 'Intelligent Item'],
+  ];
+  for (const [rx, name] of rules) if (rx.test(s)) return name;
+  return undefined;
 }
 
 function mergeTypes(cur: string[] | undefined, add: string): string[] {
   const s = new Set(cur || []);
-  for (const t of add.split(/,\s*/)) if (t.trim()) s.add(t.trim().replace(/\b\w/g, (c) => c.toUpperCase()));
+  for (const raw of add.split(/,\s*/)) {
+    const t = raw.replace(/[^\p{L}\p{N} '\-]/gu, '').trim(); // drop placeholder glyphs (U+FFFC) from some PDFs
+    if (/^[A-Za-z][A-Za-z '\-]{1,28}$/.test(t)) s.add(t.replace(/\b\w/g, (c) => c.toUpperCase()));
+  }
   return [...s];
 }
 

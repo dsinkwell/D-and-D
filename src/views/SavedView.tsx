@@ -1,8 +1,36 @@
-import { useRef, useState } from 'react';
-import { Header, Icon, Notice, SourceBadge } from '../components';
-import { clearHistory, getHistory, Mark, removeBookmark, setBookmarks, useBookmarks } from '../lib/bookmarks';
+import { useMemo, useRef, useState } from 'react';
+import { Header, Notice, SourceBadge, StarToggle } from '../components';
+import { clearHistory, getHistory, Mark, setBookmarks, useBookmarks } from '../lib/bookmarks';
 
-const LABEL = { srd: 'Rules', wiki: 'Realms Wiki', book: 'My Books' } as const;
+// Bookmarks are grouped by what they are, in this order.
+const GROUPS: [string, string][] = [
+  ['spell', 'Spells'],
+  ['feat', 'Feats'],
+  ['monster', 'Monsters'],
+  ['item', 'Magic Items'],
+  ['prestige', 'Prestige Classes'],
+  ['class', 'Classes'],
+  ['deity', 'Deities'],
+  ['trap', 'Traps'],
+  ['power', 'Psionic Powers'],
+  ['race', 'Races'],
+  ['skill', 'Skills'],
+  ['condition', 'Conditions'],
+  ['rule', 'Rules & Book Sections'],
+  ['wiki', 'Realms Wiki'],
+];
+const FROM_LABEL: Record<string, string> = {
+  Spell: 'spell', Feat: 'feat', Monster: 'monster', 'Magic item': 'item', 'Prestige class': 'prestige', Class: 'class', Deity: 'deity',
+  Trap: 'trap', 'Psionic power': 'power', Race: 'race', Skill: 'skill', Condition: 'condition',
+};
+
+/** What a bookmark is: stored kind, else read from its subtitle ("Spell · PHB p. 232"). */
+function kindOf(m: Mark): string {
+  if (m.source === 'wiki') return 'wiki';
+  if (m.kind) return GROUPS.some(([k]) => k === m.kind) ? m.kind : 'rule';
+  const first = (m.subtitle || '').split(' · ')[0];
+  return FROM_LABEL[first] || 'rule';
+}
 
 export default function SavedView() {
   const marks = useBookmarks();
@@ -34,13 +62,19 @@ export default function SavedView() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const groups = (['srd', 'wiki', 'book'] as const).map((s) => [s, marks.filter((m) => m.source === s)] as const).filter(([, l]) => l.length);
+  const [filter, setFilter] = useState('');
+  const groups = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    const shown = marks.filter((m) => !f || m.title.toLowerCase().includes(f) || (m.subtitle || '').toLowerCase().includes(f));
+    return GROUPS.map(([k, label]) => [label, shown.filter((m) => kindOf(m) === k).sort((a, b) => a.title.localeCompare(b.title))] as const).filter(
+      ([, l]) => l.length,
+    );
+  }, [marks, filter]);
 
   return (
     <div className="page">
       <Header
         title="Saved"
-        subtitle="Bookmarks and history"
         back={false}
         actions={
           <>
@@ -55,23 +89,27 @@ export default function SavedView() {
         }
       />
       {msg && <Notice>{msg}</Notice>}
-      {!marks.length && <p className="muted">Tap the ☆ on any rule, wiki article or book page to bookmark it. Use Export/Import to copy bookmarks between your devices.</p>}
-      {groups.map(([source, list]) => (
-        <section key={source}>
-          <h2 className="section-title">{LABEL[source]}</h2>
+      {!marks.length && <p className="muted">Tap the ☆ next to any spell, feat, monster, item, book section or wiki article to save it here. Use Export/Import to copy bookmarks between your devices.</p>}
+      {marks.length > 0 && (
+        <div className="filters">
+          <input className="filter-text" type="search" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} autoCorrect="off" autoCapitalize="none" />
+        </div>
+      )}
+      {groups.map(([label, list]) => (
+        <section key={label}>
+          <h2 className="section-bar">{label}</h2>
           <ul className="list">
             {list.map((m) => (
-              <li key={m.key} className="row-with-action">
+              <li key={m.key} className="ref-row">
                 <a className="row" href={m.href}>
-                  <SourceBadge source={m.source} />
                   <div className="row-main">
-                    <div className="row-title">{m.title}</div>
-                    {m.subtitle && <div className="row-sub">{m.subtitle}</div>}
+                    <div className="ref-line">
+                      <span className="ref-name">{m.title}</span>
+                    </div>
+                    {m.subtitle && <div className="ref-second">{m.subtitle}</div>}
                   </div>
                 </a>
-                <button className="icon-btn subtle" aria-label={`Remove bookmark ${m.title}`} onClick={() => removeBookmark(m.key)}>
-                  <Icon name="close" size={18} />
-                </button>
+                <StarToggle mark={m} />
               </li>
             ))}
           </ul>

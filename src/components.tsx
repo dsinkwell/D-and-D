@@ -27,6 +27,50 @@ export function BookmarkButton({ mark }: { mark: Omit<Mark, 'at'> }) {
   );
 }
 
+/** A star in a list row: bookmark without opening the entry. */
+export function StarToggle({ mark }: { mark: Omit<Mark, 'at'> }) {
+  const on = useIsBookmarked(mark.key);
+  return (
+    <button
+      className={`star-btn ${on ? 'on' : ''}`}
+      aria-pressed={on}
+      aria-label={on ? `Remove bookmark ${mark.title}` : `Bookmark ${mark.title}`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleBookmark(mark);
+      }}
+    >
+      <Icon name={on ? 'star-filled' : 'star'} size={21} />
+    </button>
+  );
+}
+
+/** Share the current page (iOS share sheet), or copy its link. */
+export function ShareButton({ title }: { title: string }) {
+  return (
+    <button
+      className="icon-btn"
+      aria-label="Share"
+      title="Share"
+      onClick={async () => {
+        const url = location.href;
+        try {
+          if (navigator.share) await navigator.share({ title, url });
+          else {
+            await navigator.clipboard.writeText(url);
+            alert('Link copied');
+          }
+        } catch {
+          /* cancelled */
+        }
+      }}
+    >
+      <Icon name="share" />
+    </button>
+  );
+}
+
 export function Loading({ label = 'Loading…' }: { label?: string }) {
   const [show, setShow] = useState(false);
   useEffect(() => {
@@ -64,6 +108,7 @@ const PATHS: Record<string, string> = {
   minus: 'M4 11h16v2H4z',
   prev: 'M15.4 4.6 8 12l7.4 7.4-1.4 1.4L5.2 12 14 3.2l1.4 1.4z',
   next: 'M8.6 19.4 16 12 8.6 4.6 10 3.2l8.8 8.8-8.8 8.8-1.4-1.4z',
+  share: 'M12 2.6 16.7 7.3l-1.4 1.4L13 6.4V15h-2V6.4L8.7 8.7 7.3 7.3 12 2.6zM5 11h3v2H6v7h12v-7h-2v-2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z',
   close: 'm6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5z',
 };
 

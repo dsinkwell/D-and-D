@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Header, Loading } from '../components';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { Header, Loading, StarToggle } from '../components';
+import { keyForHref } from '../lib/bookmarks';
 import { navigate, Route } from '../lib/router';
-import { Category, CLASS_NAMES, crValue, priceValue, SCHOOLS, SPELL_CLASSES } from '../lib/srd';
+import { Category, CATEGORY_LABEL, CLASS_NAMES, crValue, priceValue, SCHOOLS, SPELL_CLASSES } from '../lib/srd';
 import { BROWSE } from './RulesHome';
 import { catalog, CatalogItem, sourceOptions } from '../lib/catalog';
 
@@ -218,27 +219,55 @@ export default function CategoryView({ cat, route }: { cat: string; route: Route
   );
 }
 
-/** A row for one rules item: name, key stats, and where it appears (tap goes to the best version). */
+/** A row for one rules item, reference-app style: "General: **Power Attack** [PHB · SRD]" with a
+ * star to bookmark it in place. Spells, powers and monsters get a second line (levels or type,
+ * then an italic summary). Tapping opens the best version (3.5 book, then SRD, then 3.0 book). */
 export function CatalogRow({ item: e, badge }: { item: CatalogItem; badge?: string }) {
   const first = e.sources[0];
+  const shorts = [...new Set(e.sources.map((s) => s.short))];
+  const prefix =
+    e.kind === 'feat' ? e.ftype?.[0] : e.kind === 'item' ? e.itemKind : e.kind === 'trap' && e.cr ? `CR ${e.cr}` : undefined;
+  let second: ReactNode = null;
+  if (e.kind === 'spell' || e.kind === 'power') {
+    const lv = Object.entries(e.lv).slice(0, 4).map(([k, v]) => `${k} ${v}`).join(', ');
+    second = (
+      <>
+        {lv && <span>[{lv}] </span>}
+        {e.summary && <i>{e.summary}</i>}
+      </>
+    );
+  } else if (e.kind === 'monster') {
+    second = <i>{[e.ctype, e.cr && `CR ${e.cr}`].filter(Boolean).join(', ')}</i>;
+  } else if (e.kind === 'deity') {
+    second = e.portfolio ? <i>{e.portfolio}</i> : null;
+  } else if (badge && e.summary) {
+    second = <i>{e.summary}</i>;
+  }
+  const mark = {
+    key: keyForHref(first.href),
+    source: first.srd ? ('srd' as const) : ('book' as const),
+    title: e.title,
+    subtitle: `${CATEGORY_LABEL[e.kind]} · ${first.label}`,
+    href: first.href,
+    kind: e.kind,
+  };
   return (
-    <a className="row" href={first.href}>
-      {badge && <span className={`cat cat-${e.kind}`}>{badge}</span>}
-      <div className="row-main">
-        <div className="row-title">
-          {e.title}
-          {e.extra && <span className="row-meta">{e.extra}</span>}
-        </div>
-        {e.summary && <div className="row-sub">{e.summary}</div>}
-        <div className="row-sources">
-          {e.sources.slice(0, 5).map((s) => (
-            <span key={s.href} className={`src-chip ${s.srd ? 'srd' : ''}`}>
-              {s.label}
+    <div className="ref-row">
+      <a className="row" href={first.href}>
+        {badge && <span className={`cat cat-${e.kind}`}>{badge}</span>}
+        <div className="row-main">
+          <div className="ref-line">
+            {prefix && <span className="ref-prefix">{prefix}: </span>}
+            <span className="ref-name">{e.title}</span>
+            <span className="ref-src">
+              [{shorts.slice(0, 3).join(' · ')}
+              {shorts.length > 3 ? ` +${shorts.length - 3}` : ''}]
             </span>
-          ))}
-          {e.sources.length > 5 && <span className="src-chip">+{e.sources.length - 5}</span>}
+          </div>
+          {second && <div className="ref-second">{second}</div>}
         </div>
-      </div>
-    </a>
+      </a>
+      <StarToggle mark={mark} />
+    </div>
   );
 }

@@ -126,7 +126,8 @@ def set_vocabulary(words):
     VOCAB.update(words)
 
 
-LIGATURE_CHARS = str.maketrans({'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st'})
+LIGATURE_CHARS = str.maketrans({'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st',
+                                '￼': '', '�': '', '­': ''})  # object placeholders, soft hyphens
 LIG_SPLIT = re.compile(r"\b([A-Za-z]*(?:fi|fl|ff|ffi|ffl)) ([a-z]+)\b")
 
 

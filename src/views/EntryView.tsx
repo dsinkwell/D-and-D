@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BookmarkButton, Header, Icon, Loading, Notice } from '../components';
+import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton } from '../components';
+import { formatEntry } from '../lib/statblock';
 import { recordVisit } from '../lib/bookmarks';
 import { CATEGORY_LABEL, Doc, Entry, getEntry, loadDoc } from '../lib/srd';
 import { wikiHref } from '../lib/router';
@@ -64,25 +65,29 @@ export default function EntryView({ id }: { id: string }) {
   // the heading is shown in the page header already
   if (/^<h\d/.test(blocks[0])) blocks = blocks.slice(1);
 
+  const isRef = entry.c !== 'rule';
+  const label = CATEGORY_LABEL[entry.c];
   return (
     <article className="page entry">
       <Header
-        title={entry.t}
-        subtitle={
-          <>
-            <span className={`cat cat-${entry.c}`}>{CATEGORY_LABEL[entry.c]}</span> {doc.title}
-            {entry.p ? ` › ${entry.p}` : ''}
-          </>
-        }
+        title={isRef ? `${label}: ${entry.t}` : entry.t}
         actions={
           <>
             <a className="icon-btn" href={`#/srd/d/${entry.d}?at=${entry.a}`} title="Open in full chapter" aria-label="Open in full chapter">
               <Icon name="chapter" />
             </a>
-            <BookmarkButton mark={{ key: `srd:${entry.i}`, source: 'srd', title: entry.t, subtitle: `${CATEGORY_LABEL[entry.c]} · ${doc.title}`, href: `#/srd/e/${entry.i}` }} />
+            <BookmarkButton mark={{ key: `srd:${entry.i}`, source: 'srd', title: entry.t, subtitle: `${label} · SRD`, href: `#/srd/e/${entry.i}`, kind: entry.c }} />
+            <ShareButton title={entry.t} />
           </>
         }
       />
+      <div className="entry-head">
+        <h1 className="entry-title">{entry.t}</h1>
+        <div className="entry-source">
+          SRD · {doc.title}
+          {entry.p ? ` › ${entry.p}` : ''}
+        </div>
+      </div>
       {inBooks.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">In your books:</span>
@@ -101,7 +106,10 @@ export default function EntryView({ id }: { id: string }) {
           </a>
         </div>
       )}
-      <div className={`content srd cat-body-${entry.c}`} dangerouslySetInnerHTML={{ __html: blocks.join('\n') }} />
+      <div
+        className={`content srd ${isRef ? 'ref' : ''} cat-body-${entry.c}`}
+        dangerouslySetInnerHTML={{ __html: isRef ? formatEntry(blocks.join('\n'), entry.c) : blocks.join('\n') }}
+      />
       <footer className="source-note">
         Source: System Reference Document v3.5 (Open Game License). <a href={`#/srd/d/${entry.d}?at=${entry.a}`}>Read in chapter context →</a>
       </footer>

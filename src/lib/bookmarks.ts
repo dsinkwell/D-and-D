@@ -9,7 +9,19 @@ export interface Mark {
   title: string;
   subtitle?: string;
   href: string;
+  kind?: string; // spell, feat, monster, item… (groups the Saved screen)
   at: number;
+}
+
+/** The bookmark key for a link, matching the keys the entry pages use. */
+export function keyForHref(href: string): string {
+  let m = href.match(/^#\/book\/([^/]+)\/(.+)$/);
+  if (m) return `bk:${m[1]}/${decodeURIComponent(m[2])}`;
+  m = href.match(/^#\/srd\/e\/(.+)$/);
+  if (m) return `srd:${m[1]}`;
+  m = href.match(/^#\/wiki\/(.+)$/);
+  if (m) return `wiki:${decodeURIComponent(m[1])}`;
+  return href;
 }
 
 const BM = 'rc.bookmarks';
