@@ -26,6 +26,8 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
   const [remote, setRemote] = useState<RemoteManifest | null | undefined>(undefined);
   const [progress, setProgress] = useState<InstallProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [pass, setPass] = useState('');
+  const needsPass = !!remote?.encryption && !passphrase;
 
   useEffect(() => {
     remoteManifest(name).then(setRemote);
@@ -39,7 +41,7 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
     setErr(null);
     setProgress({ received: 0, total: remote?.downloadBytes || 0, part: 0, parts: remote?.parts.length || 0 });
     try {
-      await installDb(name, setProgress, passphrase);
+      await installDb(name, setProgress, passphrase || pass || undefined);
       onInstalled?.();
     } catch (e: any) {
       const msg = String(e?.message || e);
@@ -117,8 +119,18 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
               Download ({formatBytes(remote.downloadBytes)})
             </button>
           )}
+          {updateAvailable && needsPass && (
+            <input
+              type="password"
+              autoComplete="current-password"
+              placeholder="Group passphrase"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              aria-label="Group passphrase"
+            />
+          )}
           {updateAvailable && (
-            <button className="btn primary" onClick={install}>
+            <button className="btn primary" onClick={install} disabled={needsPass && !pass}>
               Update ({formatBytes(remote!.downloadBytes)})
             </button>
           )}
