@@ -1,0 +1,9 @@
+node_modules
+dist
+public/srd
+.DS_Store
+data-build
+public/data/wiki
+*.log
+*.pdf
+__pycache__/

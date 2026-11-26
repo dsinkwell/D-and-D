@@ -1,0 +1,446 @@
+"""Layout-aware text extraction for D&D rulebook PDFs.
+
+Turns a PDF (or an OCR cache from ocr_pages.py) into a flat stream of elements:
+    {"t": "h", "level": 1..4, "text", "page"}       heading
+    {"t": "p", "html", "text", "page"}             paragraph (inline <b>/<i> kept)
+    {"t": "table", "rows": [[cell, ...]], "page"}  table-like block
+Heading styles are learned per book: the body style is the most common (font, size);
+headings are short standalone lines in a larger or display font.
+"""
+import collections
+import html as htmllib
+import json
+import re
+
+import pymupdf
+
+WATERMARK = re.compile(r'\(Order #\d+\)|Order #\d{5,}')
+CAPTION = re.compile(r'^(Table|Map)\s+[\dA-Z]+\s*[–\-—.]\s*\d+\s*:|^Table\s+\d+\s*:', re.I)
+CREDIT = re.compile(r'^(Illus(tration|\.)? by|Art by|Cartography by|Map by)\b', re.I)
+PAGE_NUM = re.compile(r'^\s*\d{1,3}\s*$')
+DISPLAY_FONT = re.compile(r'Pterra|Democratica|Caps|SC-|Historical|Mason|Trajan|Copperplate|Albertus|Lithos', re.I)
+BOLD = re.compile(r'Bold|Semibo|Semibold|Black|Heavy|Demi', re.I)
+ITALIC = re.compile(r'Italic|Oblique|-It\b|MediumIt', re.I)
+TABLE_FONT = re.compile(r'ScalaSans|Arial|Helvetica|Frutiger|Futura|Optima', re.I)
+
+
+def esc(s):
+    return htmllib.escape(s, quote=False)
+
+
+# ---------------------------------------------------------------------------- page reading
+
+def page_lines_pdf(page):
+    """Lines with spans, in two-column reading order."""
+    W, H = page.rect.width, page.rect.height
+    d = page.get_text('dict', flags=pymupdf.TEXT_PRESERVE_WHITESPACE | pymupdf.TEXT_MEDIABOX_CLIP)
+    blocks = []
+    for b in d['blocks']:
+        if b.get('type') != 0:
+            continue
+        lines = []
+        for l in b['lines']:
+            dx, dy = l.get('dir', (1, 0))
+            if abs(dy) > 0.2 or dx < 0.8:
+                continue  # rotated side tabs ("CHAPTER 3: CLASSES") and other vertical text
+            spans = [s for s in l['spans'] if s['text'].strip() and s['size'] >= 4]
+            if not spans:
+                continue
+            text = ''.join(s['text'] for s in spans).strip()
+            if WATERMARK.search(text):
+                continue
+            lines.append({'spans': spans, 'bbox': l['bbox'], 'text': text})
+        if lines:
+            x0 = min(l['bbox'][0] for l in lines); x1 = max(l['bbox'][2] for l in lines)
+            y0 = min(l['bbox'][1] for l in lines); y1 = max(l['bbox'][3] for l in lines)
+            blocks.append({'lines': lines, 'bbox': (x0, y0, x1, y1)})
+    return order_blocks(blocks, W, H), W, H
+
+
+WORD = re.compile(r"^[(\"“‘']?([A-Za-z][a-z'’\-]*[a-z]|[A-Z][A-Z'’\-]+|[A-Za-z]|\d+(st|nd|rd|th|d\d+|%|gp|ft\.?)?|\d+[–\-/]\d+)[)\"”’'.,;:!?]*$")
+
+
+VOCAB = set()
+
+
+def set_vocabulary(words):
+    """Known-good words (built from the text-based rulebooks) used to judge OCR lines."""
+    VOCAB.clear()
+    VOCAB.update(words)
+
+
+def word_quality(text):
+    toks = text.split()
+    if not toks:
+        return 0.0
+    good = 0
+    for t in toks:
+        core = re.sub(r"[^A-Za-z'’\-]", '', t).strip("'’-").lower()
+        if not core:
+            good += 1 if re.fullmatch(r'[\d+\-–/%.,;:()]+[a-z]{0,2}', t) else 0
+            continue
+        if VOCAB:
+            if core in VOCAB or all(part in VOCAB for part in re.split(r"[-’']", core) if part):
+                good += 1
+        elif WORD.match(t) and (len(core) <= 3 or re.search(r'[aeiouy]', core)):
+            good += 1
+    return good / len(toks)
+
+
+def page_lines_ocr(p):
+    """OCR lines → blocks (Tesseract's own text blocks when recorded), then reading order."""
+    W, H = p['w'], p['h']
+    groups = {}
+    for i, l in enumerate(p['lines']):
+        text = re.sub(r'\s{2,}', ' ', l['text']).strip()
+        alpha = sum(c.isalpha() for c in text)
+        if len(text) < 3 or alpha < max(2, len(text) * 0.5):
+            continue  # OCR specks, border art, stray marks
+        if re.search(r'\.{4,}|…{2,}|(\. ){3,}', text):
+            continue  # table-of-contents dot leaders
+        if l['bbox'][1] < H * 0.045 or l['bbox'][1] > H * 0.955:
+            continue  # running headers / page numbers (OCR garbles them, so they can't be matched as repeats)
+        if WATERMARK.search(text):
+            continue
+        if word_quality(text) < 0.6:
+            continue  # OCR noise from artwork, textured backgrounds and borders
+        span = {'text': text, 'size': l['size'] * 0.82, 'font': 'OCR', 'flags': 0, 'color': 0}
+        groups.setdefault(l.get('b', f'line{i}'), []).append({'spans': [span], 'bbox': l['bbox'], 'text': text})
+    blocks = []
+    for lines in list(groups.values()):
+        widths = sorted(l['bbox'][2] - l['bbox'][0] for l in lines)
+        bx0 = min(l['bbox'][0] for l in lines); bx1 = max(l['bbox'][2] for l in lines)
+        if len(lines) > 1 and (bx1 - bx0) > W * 0.55 and widths[len(widths) // 2] < W * 0.5:
+            # Tesseract merged two columns into one block: treat each line separately
+            for l in lines:
+                blocks.append({'lines': [l], 'bbox': tuple(l['bbox'])})
+            continue
+        lines.sort(key=lambda l: l['bbox'][1])
+        x0 = min(l['bbox'][0] for l in lines); x1 = max(l['bbox'][2] for l in lines)
+        y0 = min(l['bbox'][1] for l in lines); y1 = max(l['bbox'][3] for l in lines)
+        blocks.append({'lines': lines, 'bbox': (x0, y0, x1, y1)})
+    return order_blocks(blocks, W, H), W, H
+
+
+def order_blocks(blocks, W, H):
+    """Reading order for 1-, 2- or 3-column pages.
+
+    Columns are found by clustering the left edges of narrow blocks. Blocks wider than a
+    column (titles, wide tables, sidebars) split the page into horizontal bands; within a
+    band each column is read top to bottom, left to right.
+    """
+    if not blocks:
+        return []
+    narrow = [b for b in blocks if (b['bbox'][2] - b['bbox'][0]) < W * 0.55]
+    xs = sorted(b['bbox'][0] for b in narrow)
+    cols = []
+    for x in xs:
+        if cols and x - cols[-1][-1] < 30:
+            cols[-1].append(x)
+        else:
+            cols.append([x])
+    # Keep only real columns: enough blocks/lines start there, and columns are well apart.
+    min_count = max(2, int(len(narrow) * 0.08))
+    starts = []
+    for c in sorted(cols, key=lambda c: min(c)):
+        if len(c) < min_count:
+            continue
+        if starts and min(c) - starts[-1] < W * 0.2:
+            continue
+        starts.append(min(c))
+    starts = starts or [0]
+
+    def col_of(b):
+        x0 = b['bbox'][0]
+        best = 0
+        for i, st in enumerate(starts):
+            if x0 >= st - 15:
+                best = i
+        return best
+
+    def is_wide(b):
+        x0, _, x1, _ = b['bbox']
+        if (x1 - x0) > W * 0.62:
+            return True
+        c = col_of(b)
+        return c + 1 < len(starts) and x1 > starts[c + 1] + 15
+
+    wide = sorted([b for b in blocks if is_wide(b)], key=lambda b: b['bbox'][1])
+    rest = [b for b in blocks if not is_wide(b)]
+    out, top = [], -1
+    for f in wide + [None]:
+        bottom = f['bbox'][1] if f else H + 1
+        band = [b for b in rest if top <= (b['bbox'][1] + b['bbox'][3]) / 2 < bottom]
+        for ci in range(len(starts)):
+            out += sorted([b for b in band if col_of(b) == ci], key=lambda b: b['bbox'][1])
+        if f:
+            out.append(f)
+            top = f['bbox'][3]
+    seen = set()
+    lines = []
+    for b in out:
+        if id(b) in seen:
+            continue
+        seen.add(id(b))
+        lines.extend(b['lines'])
+    return lines
+
+
+# ---------------------------------------------------------------------------- style analysis
+
+def style_key(span):
+    return (span['font'], round(span['size'] * 2) / 2)
+
+
+def line_style(line):
+    c = collections.Counter()
+    for s in line['spans']:
+        c[style_key(s)] += len(s['text'].strip())
+    font, size = c.most_common(1)[0][0]
+    # Small caps (“CLOAK OF…” set as 14pt capitals + 10.5pt small capitals): use the larger size.
+    letters = [ch for ch in line['text'] if ch.isalpha()]
+    if len(letters) >= 3 and all(ch.isupper() for ch in letters):
+        sizes = [style_key(s)[1] for s in line['spans'] if s['font'] == font and s['text'].strip()]
+        if len(set(sizes)) > 1:
+            size = max(sizes)
+    return (font, size)
+
+
+def learn_styles(pages):
+    """Return body size and a mapping heading-style -> level."""
+    chars = collections.Counter()
+    for lines, W, H in pages:
+        for l in lines:
+            for s in l['spans']:
+                chars[style_key(s)] += len(s['text'].strip())
+    body_font, body_size = chars.most_common(1)[0][0]
+    total = sum(chars.values())
+
+    # Candidate heading styles: short standalone lines, larger or display font.
+    cand = collections.Counter()
+    for lines, W, H in pages:
+        for l in lines:
+            st = line_style(l)
+            text = l['text']
+            if len(text) > 70 or len(text) < 2:
+                continue
+            font, size = st
+            bigger = size >= body_size * 1.18
+            display = bool(DISPLAY_FONT.search(font)) and size >= body_size * 0.95
+            if bigger or display:
+                cand[st] += 1
+    # Rare styles (decoration, drop caps) are ignored; very common ones aren't headings.
+    styles = [s for s, n in cand.items() if 3 <= n and chars[s] < total * 0.08 and not ITALIC.search(s[0])]
+    styles.sort(key=lambda s: (-s[1], 0 if DISPLAY_FONT.search(s[0]) else 1))
+    levels, lvl, last = {}, 0, None
+    for s in styles:
+        if last is None or s[1] < last - 0.6:
+            lvl += 1
+            last = s[1]
+        levels[s] = min(lvl, 6)
+    return body_size, levels
+
+
+# ---------------------------------------------------------------------------- stream building
+
+def span_html(spans):
+    out = []
+    for s in spans:
+        t = esc(s['text'])
+        f = s['font']
+        b = bool(BOLD.search(f)) or (s.get('flags', 0) & 16)
+        i = bool(ITALIC.search(f)) or (s.get('flags', 0) & 2)
+        if b and t.strip():
+            t = f'<b>{t}</b>'
+        if i and t.strip():
+            t = f'<i>{t}</i>'
+        out.append(t)
+    return ''.join(out).replace('</b><b>', '').replace('</i><i>', '')
+
+
+def is_table_line(line, body_size):
+    spans = line['spans']
+    if len(spans) < 2:
+        return False
+    gaps = 0
+    for a, b in zip(spans, spans[1:]):
+        if b['bbox'][0] - a['bbox'][2] > 9:
+            gaps += 1
+    small = all(s['size'] <= body_size * 0.95 for s in spans) or all(TABLE_FONT.search(s['font']) for s in spans)
+    return gaps >= 1 and small
+
+
+def split_cells(line):
+    cells, cur, last_x1 = [], [], None
+    for s in line['spans']:
+        if last_x1 is not None and s['bbox'][0] - last_x1 > 9:
+            cells.append(''.join(x['text'] for x in cur).strip())
+            cur = []
+        cur.append(s)
+        last_x1 = s['bbox'][2]
+    if cur:
+        cells.append(''.join(x['text'] for x in cur).strip())
+    return [c for c in cells]
+
+
+def build_stream(pages, body_size, levels, page_offset=0, toc=None):
+    # Running headers/footers: identical short text in the top/bottom margin on many pages.
+    margin_text = collections.Counter()
+    for lines, W, H in pages:
+        seen = set()
+        for l in lines:
+            y = l['bbox'][1]
+            if y < H * 0.075 or y > H * 0.93:
+                key = re.sub(r'\d+', '#', l['text'].strip().lower())
+                if key not in seen:
+                    margin_text[key] += 1
+                    seen.add(key)
+    running = {k for k, n in margin_text.items() if n >= 4}
+
+    stream = []
+    para = None
+
+    def flush():
+        nonlocal para
+        if para:
+            text = re.sub(r'\s+', ' ', para['text']).strip()
+            if text:
+                stream.append({'t': 'p', 'html': re.sub(r'\s+', ' ', para['html']).strip(), 'text': text, 'page': para['page']})
+        para = None
+
+    table = None
+
+    def flush_table():
+        nonlocal table
+        if table and len(table['rows']) >= 2:
+            stream.append(table)
+        elif table:
+            for r in table['rows']:
+                stream.append({'t': 'p', 'html': esc(' '.join(r)), 'text': ' '.join(r), 'page': table['page']})
+        table = None
+
+    import difflib
+    def norm(t):
+        return re.sub(r'[^a-z]', '', t.lower())
+
+    for pi, (lines, W, H) in enumerate(pages):
+        pno = pi + 1 + page_offset
+        prev_bottom = None
+        # Bookmark headings (scanned books): put each at its best-matching line on the page.
+        pending = {}
+        if toc:
+            for lvl_t, title in toc.get(pno, []):
+                best, best_r = None, 0.0
+                for li, l in enumerate(lines):
+                    r = difflib.SequenceMatcher(None, norm(title), norm(l['text'])[:len(norm(title)) + 8]).ratio()
+                    if r > best_r:
+                        best, best_r = li, r
+                key = best if best_r >= 0.62 else -1
+                pending.setdefault(key, []).append((lvl_t, title, best_r >= 0.62))
+            for lvl_t, title, _ in pending.pop(-1, []):
+                flush(); flush_table()
+                stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno})
+        for li, l in enumerate(lines):
+            if li in pending:
+                flush(); flush_table()
+                for lvl_t, title, _ in pending[li]:
+                    stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno})
+                prev_bottom = l['bbox'][3]
+                continue  # the matched line is the heading itself
+            text = l['text'].strip()
+            y0, y1 = l['bbox'][1], l['bbox'][3]
+            key = re.sub(r'\d+', '#', text.lower())
+            if (y0 < H * 0.075 or y0 > H * 0.93) and (key in running or PAGE_NUM.match(text)):
+                continue
+            if PAGE_NUM.match(text) and (y0 < H * 0.1 or y0 > H * 0.9):
+                continue
+            if CREDIT.match(text):
+                continue
+            if CAPTION.match(text):
+                flush(); flush_table()
+                stream.append({'t': 'cap', 'text': text, 'page': pno})
+                prev_bottom = y1
+                continue
+            st = line_style(l)
+            lvl = levels.get(st)
+            if lvl and st[0] == 'OCR' and (len(text.split()) > 7 or word_quality(text) < 0.95 or text.endswith(('.', ',', ';')) or not text[:1].isupper()):
+                lvl = None  # OCR: only clean, short, capitalised lines can be headings
+            if lvl and re.match(r'^(chapter\s+)?\d{1,2}:?$', text, re.I):
+                continue  # bare chapter numbers ("11", "CHAPTER 3:") are decoration
+            if lvl and para is None and table is None and re.match(r'^\([^)]{3,40}\)$', text) and stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno:
+                stream[-1]['text'] += ' ' + text
+                prev_bottom = y1
+                continue
+            if lvl and len(text) <= 80:
+                flush(); flush_table()
+                # merge multi-line headings and "[General]" tags
+                if stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno and stream[-1]['level'] == lvl and stream[-1].get('_y') and abs(y0 - stream[-1]['_y']) < st[1] * 1.6 and len(stream[-1]['text']) + len(text) < 90:
+                    stream[-1]['text'] += ' ' + text
+                    stream[-1]['_y'] = y1
+                else:
+                    stream.append({'t': 'h', 'level': lvl, 'text': text, 'page': pno, '_y': y1})
+                prev_bottom = y1
+                continue
+            # "(Intermediate Goddess)" / "(Greater Deity)" under a name heading: part of that heading
+            if para is None and table is None and re.match(r'^\([^)]{3,40}\)$', text) and stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno:
+                stream[-1]['text'] += ' ' + text
+                prev_bottom = y1
+                continue
+            if re.match(r'^\[[A-Za-z ,]+\]$', text) and stream and stream[-1]['t'] == 'h':
+                stream[-1]['text'] += ' ' + text
+                continue
+            if is_table_line(l, body_size):
+                flush()
+                if table is None:
+                    table = {'t': 'table', 'rows': [], 'page': pno}
+                table['rows'].append(split_cells(l))
+                prev_bottom = y1
+                continue
+            flush_table()
+            html = span_html(l['spans'])
+            gap = (y0 - prev_bottom) if prev_bottom is not None else 0
+            starts_bold = l['spans'][0]['text'].strip() and BOLD.search(l['spans'][0]['font'])
+            new_para = para is None or gap > body_size * 0.55 or gap < -body_size * 3 or (starts_bold and para['text'].rstrip().endswith(('.', ':', '!', '?', ')')))
+            if para and not para['text'].rstrip().endswith(('.', '!', '?', ':', '”', '"')) and text[:1].islower() and not starts_bold:
+                new_para = False  # paragraph continues in the next column or on the next page
+            if new_para:
+                flush()
+                para = {'html': html, 'text': text, 'page': pno}
+            else:
+                joiner = '' if para['text'].endswith('-') and text[:1].islower() else ' '
+                if joiner == '':
+                    para['text'] = para['text'][:-1]
+                    para['html'] = re.sub(r'-(</[bi]>)*$', r'\1', para['html'])
+                para['text'] += joiner + text
+                para['html'] += joiner + html
+            prev_bottom = y1
+        # page boundary: tables never continue across pages
+        flush_table()
+    flush(); flush_table()
+    for e in stream:
+        e.pop('_y', None)
+    return stream
+
+
+def extract(pdf_path=None, ocr_path=None, page_offset=0):
+    toc = None
+    if ocr_path:
+        data = json.load(open(ocr_path))
+        pages = [page_lines_ocr(p) for p in data['pages']]
+        if pdf_path:
+            raw = [t for t in pymupdf.open(pdf_path).get_toc() if t[2] > 0 and not re.match(r'(?i)^(my bookmarks|front cover|back cover|table of contents|contents)$', t[1].strip())]
+            if len(raw) >= 15:
+                base = min(t[0] for t in raw)
+                toc = {}
+                for lvl, title, page in raw:
+                    toc.setdefault(page, []).append((min(lvl - base + 1, 6), title.strip()))
+    else:
+        doc = pymupdf.open(pdf_path)
+        pages = [page_lines_pdf(doc[i]) for i in range(doc.page_count)]
+    body_size, levels = learn_styles(pages)
+    if ocr_path:
+        levels = {}  # OCR sizes are unreliable: headings come from bookmarks, or one section per page
+        if not toc:
+            toc = {i + 1: [(1, f'Page {i + 1}')] for i in range(len(pages))}
+    stream = build_stream(pages, body_size, levels, page_offset, toc)
+    return stream, {'body_size': body_size, 'levels': {f'{k[0]}@{k[1]}': v for k, v in levels.items()}, 'pages': len(pages), 'toc_headings': bool(toc)}

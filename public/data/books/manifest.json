@@ -1,0 +1,29 @@
+{
+  "name": "books",
+  "version": "20261126T0118",
+  "built": "2026-11-26T01:18:52.772Z",
+  "dbBytes": 34459648,
+  "sha256": "dc31ee35d5bf52a92032c0bc012a9f963012f4d1f5573ec939bd264623a1fecf",
+  "parts": [
+    {
+      "file": "part-000.bin",
+      "bytes": 11996890
+    },
+    {
+      "file": "part-001.bin",
+      "bytes": 9835956
+    },
+    {
+      "file": "part-002.bin",
+      "bytes": 518064
+    }
+  ],
+  "bookCount": 27,
+  "encryption": {
+    "kdf": "PBKDF2-SHA256",
+    "iterations": 600000,
+    "salt": "QvTJWQ6+mJyy/SG1N3rvXw==",
+    "check": "hhgVGtFnDWVESWey+dInl8QzOjosSOcp8yxXma0mdbhHJhomcXvZLrAYzcbbiypkthDGVi0="
+  },
+  "downloadBytes": 22350910
+}

@@ -1,0 +1,75 @@
+# Builds and publishes Realms Codex to GitHub Pages.
+#
+# - On every push to main, and every Monday, it refreshes the offline Forgotten Realms Wiki
+#   (only changed articles are re-downloaded; the cache is kept between runs) and deploys.
+# - The built-in rulebooks are NOT built here: their encrypted data (public/data/books/) is
+#   committed to the repository by the person who has the PDFs (scripts/books/build_books.py).
+#
+# One-time setup: repository Settings → Pages → Source: "GitHub Actions".
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore wiki cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data-build/wiki-cache.db
+          key: wiki-cache-${{ github.run_id }}
+          restore-keys: wiki-cache-
+
+      - name: Refresh offline wiki (changed articles only)
+        run: node scripts/build-wiki.mjs --max-minutes 280 --concurrency 3
+        env:
+          NODE_NO_WARNINGS: '1'
+
+      - name: Save wiki cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data-build/wiki-cache.db
+          key: wiki-cache-${{ github.run_id }}
+
+      - name: Build app
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
