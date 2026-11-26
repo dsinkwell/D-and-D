@@ -8,8 +8,9 @@
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview",
-    "prebuild": "node scripts/build-srd.mjs",
-    "predev": "node scripts/build-srd.mjs"
+    "prebuild": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/fetch-models.mjs",
+    "predev": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs",
+    "fetch:models": "node scripts/fetch-models.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.7.5",

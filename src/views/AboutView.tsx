@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Header, Notice, useOnline } from '../components';
 import { formatBytes, storageEstimate } from '../lib/storage';
 import { OfflineDataCard } from '../OfflineData';
+import { AskModelSettings } from './AskView';
 import { clearSaved, countSaved, DEFAULT_WIKI, getWikiSettings, saveWikiSettings, searchWiki } from '../lib/wiki';
 
 export default function AboutView() {
@@ -48,6 +49,7 @@ export default function AboutView() {
       </section>
 
       <OfflineDataCard name="wiki" />
+      <AskModelSettings />
 
       <section className="card">
         <h2>Live wiki connection</h2>

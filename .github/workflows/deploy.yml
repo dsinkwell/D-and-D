@@ -37,6 +37,26 @@ jobs:
           cache: npm
 
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip # onnxruntime-node comes with transformers.js; no GPU binaries needed
+
+      # Ask box: the meaning-search model (pinned + checksummed) and the Python tools that
+      # embed wiki articles at build time.
+      - name: Fetch Ask model
+        run: node scripts/fetch-models.mjs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - run: pip install onnxruntime==1.29.0 tokenizers==0.22.2 numpy==2.5.3
+
+      - name: Restore Ask embedding cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data-build/ask-cache.db
+          key: ask-cache-${{ github.run_id }}
+          restore-keys: ask-cache-
 
       - name: Restore wiki cache
         uses: actions/cache/restore@v4
@@ -74,6 +94,13 @@ jobs:
         with:
           path: data-build/wiki-cache.db
           key: wiki-cache-${{ github.run_id }}
+
+      - name: Save Ask embedding cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data-build/ask-cache.db
+          key: ask-cache-${{ github.run_id }}
 
       - name: Build app
         run: npm run build

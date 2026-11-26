@@ -18,8 +18,6 @@ const PIN_FILE = join(ROOT, 'scripts', 'models.lock.json');
 export const MODELS = {
   // sentence embeddings for meaning search (384 dimensions)
   'Xenova/bge-small-en-v1.5': ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'onnx/model_quantized.onnx'],
-  // extractive question answering: highlights the answer span in a passage
-  'Xenova/distilbert-base-cased-distilled-squad': ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'onnx/model_quantized.onnx'],
 };
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');

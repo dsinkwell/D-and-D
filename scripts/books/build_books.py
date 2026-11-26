@@ -471,6 +471,50 @@ def mark_prestige_classes(stream, entries):
 
 # ---------------------------------------------------------------------------- database
 
+def add_ask_index(db, results):
+    """Ask-box meaning index: each spell/feat/item/monster… is one passage (title + opening
+    text); long rules sections are split into ~700-character passages. Stored in the books
+    database, so it is encrypted along with the text."""
+    sys.path.insert(0, os.path.join(ROOT, 'scripts', 'lib'))
+    try:
+        from embed import embed_cached, write_vector_tables, html_text, chunk_blocks
+    except Exception as e:  # noqa: BLE001
+        print(f'  ! meaning index skipped ({e})')
+        return
+    if not os.path.exists(os.path.join(ROOT, 'public', 'models', 'Xenova', 'bge-small-en-v1.5', 'onnx', 'model_quantized.onnx')):
+        print('  ! meaning index skipped: run node scripts/fetch-models.mjs first')
+        return
+    ids = {(r[0], r[1]): r[2] for r in db.execute('SELECT book, start, id FROM entries')}
+    refs, texts = [], []
+    for (b, blocks, entries, pages) in results:
+        plain = None
+        order = sorted(entries, key=lambda e: e['start'])
+        for k, e in enumerate(order):
+            eid = ids.get((b[0], e['start']))
+            if eid is None:
+                continue
+            nxt = order[k + 1]['start'] if k + 1 < len(order) else e['end']
+            lo = e['start'] + (1 if blocks[e['start']].startswith('<h') else 0)
+            hi = max(lo, min(e['end'], nxt))
+            if hi <= lo:
+                continue
+            if plain is None:
+                plain = [None] * len(blocks)
+            seg = []
+            for i in range(lo, hi):
+                if plain[i] is None:
+                    plain[i] = html_text(blocks[i])
+                seg.append(plain[i])
+            chunks = chunk_blocks(seg, target=900 if e['kind'] != 'rule' else 700, max_chunks=1 if e['kind'] != 'rule' else 12)
+            for a, z, text in chunks:
+                refs.append((eid, lo + a, lo + z))
+                texts.append(f"{e['title']}. {text}"[:1200])
+    print(f'  meaning index: {len(texts)} passages…', flush=True)
+    vecs = embed_cached(texts)
+    write_vector_tables(db, refs, vecs)
+    print(f'  meaning index: {len(refs)} passages, {vecs.nbytes / 1e6:.1f} MB')
+
+
 def write_db(results):
     os.makedirs(BUILD, exist_ok=True)
     if os.path.exists(OUT_DB):
@@ -504,6 +548,7 @@ def write_db(results):
       CREATE INDEX entries_title ON entries(title);
       INSERT INTO fts(fts) VALUES('optimize');
     """)
+    add_ask_index(db, results)
     version = time.strftime('%Y%m%dT%H%M', time.gmtime())
     db.execute('INSERT INTO meta VALUES (?,?)', ('version', version))
     db.execute('INSERT INTO meta VALUES (?,?)', ('chunk', str(CHUNK)))

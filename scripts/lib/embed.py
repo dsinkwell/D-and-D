@@ -53,3 +53,86 @@ class Embedder:
 def quantize(vecs):
     """float32 unit vectors → int8 (scale 127). Dot products of int8 vectors rank like the floats."""
     return np.clip(np.round(vecs * 127), -127, 127).astype(np.int8)
+
+
+def model_id():
+    import json
+    lock = json.load(open(os.path.join(ROOT, 'scripts', 'models.lock.json')))
+    return 'Xenova/bge-small-en-v1.5@' + lock['Xenova/bge-small-en-v1.5']['revision'][:12]
+
+
+def embed_cached(texts, cache_path=None, log=print):
+    """int8 vectors for texts, reusing earlier results from a small SQLite cache keyed by
+    (model, text hash), so rebuilding only embeds passages that changed."""
+    import hashlib, sqlite3
+    cache_path = cache_path or os.path.join(ROOT, 'data-build', 'ask-cache.db')
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    db = sqlite3.connect(cache_path)
+    db.execute('CREATE TABLE IF NOT EXISTS v (k TEXT PRIMARY KEY, vec BLOB)')
+    mid = model_id()
+    keys = [hashlib.sha1((mid + '\n' + t).encode()).hexdigest() for t in texts]
+    have = {}
+    for i in range(0, len(keys), 900):
+        chunk = keys[i:i + 900]
+        for k, v in db.execute(f'SELECT k, vec FROM v WHERE k IN ({",".join("?" * len(chunk))})', chunk):
+            have[k] = v
+    todo = [i for i, k in enumerate(keys) if k not in have]
+    if todo:
+        log(f'  embedding {len(todo)} new passages ({len(texts) - len(todo)} cached)…')
+        emb = Embedder()
+        for s in range(0, len(todo), 2048):
+            part = todo[s:s + 2048]
+            q = quantize(emb.embed([texts[i] for i in part]))
+            db.executemany('INSERT OR REPLACE INTO v VALUES (?,?)', [(keys[i], q[n].tobytes()) for n, i in enumerate(part)])
+            db.commit()
+            for n, i in enumerate(part):
+                have[keys[i]] = q[n].tobytes()
+            log(f'    {min(s + 2048, len(todo))}/{len(todo)}')
+    out = np.frombuffer(b''.join(have[k] for k in keys), dtype=np.int8).reshape(len(keys), 384) if keys else np.zeros((0, 384), np.int8)
+    db.close()
+    return out
+
+
+ROWS_PER_PART = 4096
+
+
+def write_vector_tables(db, refs, vecs):
+    """Store passages + vectors in a SQLite database the app downloads:
+    ask_passages(id, ref, start, end) and ask_vectors(n, data) with ROWS_PER_PART vectors per row."""
+    db.executescript('''
+      DROP TABLE IF EXISTS ask_passages; DROP TABLE IF EXISTS ask_vectors;
+      CREATE TABLE ask_passages (id INTEGER PRIMARY KEY, ref INTEGER, start INTEGER, "end" INTEGER);
+      CREATE TABLE ask_vectors (n INTEGER PRIMARY KEY, data BLOB);
+    ''')
+    db.executemany('INSERT INTO ask_passages VALUES (?,?,?,?)', [(i, *r) for i, r in enumerate(refs)])
+    for n in range(0, len(vecs), ROWS_PER_PART):
+        db.execute('INSERT INTO ask_vectors VALUES (?,?)', (n // ROWS_PER_PART, vecs[n:n + ROWS_PER_PART].tobytes()))
+    db.execute('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)')
+    db.execute("INSERT OR REPLACE INTO meta VALUES ('ask_model', ?)", (model_id(),))
+    db.execute("INSERT OR REPLACE INTO meta VALUES ('ask_dims', '384')")
+    db.commit()
+
+
+def html_text(h):
+    import html as _html, re
+    return re.sub(r'\s+', ' ', _html.unescape(re.sub(r'<[^>]+>', ' ', h or ''))).strip()
+
+
+def chunk_blocks(texts, target=700, max_chunks=12):
+    """Group consecutive block texts into passages of about `target` characters.
+    Returns [(first_index, end_index, text)]."""
+    out, cur, start = [], [], 0
+    for i, t in enumerate(texts):
+        if not t:
+            continue
+        if not cur:
+            start = i
+        cur.append(t)
+        if sum(len(x) for x in cur) >= target:
+            out.append((start, i + 1, ' '.join(cur)))
+            cur = []
+            if len(out) >= max_chunks:
+                return out
+    if cur:
+        out.append((start, len(texts), ' '.join(cur)))
+    return out

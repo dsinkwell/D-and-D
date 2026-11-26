@@ -29,11 +29,18 @@ export default defineConfig({
         // Precache the whole SRD so rules work with no connection at all.
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,json,webmanifest,wasm}'],
         // The offline wiki/books databases are downloaded explicitly into OPFS, not precached.
-        globIgnores: ['data/**'],
+        // The Ask model/runtime (~47 MB) is opt-in: downloaded from the Ask page into its own cache.
+        globIgnores: ['data/**', 'models/**', 'ort/**', 'ask/**'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/data\//],
+        navigateFallbackDenylist: [/\/data\//, /\/models\//, /\/ort\//, /\/ask\//],
         runtimeCaching: [
+          {
+            // Ask: model, ONNX runtime and SRD meaning index, stored by downloadAsk() in this cache.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /\/(models|ort|ask)\//.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'ask-models', cacheableResponse: { statuses: [200] }, matchOptions: { ignoreVary: true } },
+          },
           {
             // Images embedded in Forgotten Realms Wiki articles.
             urlPattern: ({ url }) => url.hostname.endsWith('nocookie.net'),
@@ -48,6 +55,10 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    // the plain WebAssembly build of ONNX Runtime (11 MB) instead of the WebGPU/JSEP one (23 MB)
+    alias: [{ find: /^onnxruntime-web$/, replacement: 'onnxruntime-web/wasm' }],
+  },
   optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
   worker: { format: 'es' },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },

@@ -51,6 +51,17 @@ The user was frustrated by the first version (SRD only + per-device PDF import +
 - **CI wiki seed:** Fandom throttles GitHub runners (~250 articles, then ~15 min blocked), so CI cannot do a full crawl. The orphan branch `wiki-seed` holds a complete `wiki-cache.db` (split into parts); the workflow restores it when the Actions cache has fewer than 60,000 pages. Weekly runs then fetch only changed articles.
 - **Hosting:** needs a GitHub repo (the user is connecting GitHub via https://claude.ai/connect-github) and Pages source set to "GitHub Actions".
 
+## Ask box (natural-language questions, branch `ask-box`)
+
+- **No server, no cost.** Everything runs on the device. `#/ask?q=` (`src/views/AskView.tsx`); a separate Ask box sits above the search box on the home screen.
+- **Direct answers** (`src/lib/ask/direct.ts`): single-fact questions ("range of fireball", "who rules Cormyr", "Mystra's portfolio", "god of thieves") are parsed with patterns and answered from book/SRD stat lines or wiki info boxes (`pi-data-label`/`pi-data-value`; a country's head of state is the row after "Type"). List questions ("level 3 cleric spells", "undead CR 4 to 6") filter the catalog and link to the category view.
+- **Passages** (`src/lib/ask/engine.ts` + `src/workers/ask.worker.ts`): meaning search with bge-small-en-v1.5 (int8 ONNX, 34 MB, transformers.js + onnxruntime-web WASM, single thread) over int8 vectors (1-bit signature prefilter, exact rerank), fused with keyword search (RRF). Without the model downloaded, Ask falls back to keyword search only.
+- **Highlighting** (`src/lib/ask/highlight.ts`): best sentence(s) by question terms, entry-name words down-weighted.
+- **Indexes:** SRD → `public/ask/srd-*.{json,i8}` (committed; `python3 scripts/ask/embed_srd.py`); books → `ask_passages`/`ask_vectors` tables inside the encrypted books.db (`build_books.py` → `add_ask_index`); wiki → same tables in wiki.db (`build-wiki.mjs` runs `scripts/ask/embed_wiki.py`; CI caches `data-build/ask-cache.db`). Python embedding: `scripts/lib/embed.py` (onnxruntime + tokenizers, CLS pooling, query prefix in the worker).
+- **Model files:** `node scripts/fetch-models.mjs` (pinned commit + SHA-256 in `scripts/models.lock.json`) → `public/models/` (git-ignored); `scripts/copy-ort.mjs` → `public/ort/`. Both run in `prebuild`. The app hosts its own copies; the model is an opt-in 47 MB download into the `ask-models` cache (not precached). Vite aliases `onnxruntime-web` → `onnxruntime-web/wasm` (11 MB build, not the 23 MB WebGPU one).
+- Measured (Chromium, laptop): model load ~1 s on first question; meaning search 25–60 ms; whole answer 50–170 ms; ~110k passages.
+- Next: hidden test page for written answers with a WebGPU LLM (user tries it on iPhone/iPad/Mac), then optionally a "Write an answer" button.
+
 ## Commands
 
 ```bash

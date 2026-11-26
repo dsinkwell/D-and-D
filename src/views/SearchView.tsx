@@ -9,6 +9,7 @@ import { OfflineDataCard } from '../OfflineData';
 import { booksReady } from '../lib/books';
 import { CatalogItem, searchRules } from '../lib/catalog';
 import { CatalogRow } from './CategoryView';
+import { askDownloaded, prepareAsk } from '../lib/ask/engine';
 
 type Scope = 'all' | 'rules' | 'books' | 'wiki';
 const SCOPES: { id: Scope; label: string }[] = [
@@ -120,6 +121,7 @@ export default function SearchView({ route }: { route: Route }) {
     <div className="page search-page">
       <div className="search-top">
         <h1 className="search-heading">3.5 Forgotten Realms Reference</h1>
+        <AskBox />
         <form
           className="searchbar"
           role="search"
@@ -270,5 +272,33 @@ export default function SearchView({ route }: { route: Route }) {
         </section>
       )}
     </div>
+  );
+}
+
+/** The separate natural-language box: sends the question to the Ask page. */
+function AskBox() {
+  const [text, setText] = useState('');
+  return (
+    <form
+      className="searchbar askbox"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (text.trim()) navigate(`/ask?q=${encodeURIComponent(text.trim())}`);
+      }}
+    >
+      <Icon name="ask" />
+      <input
+        type="search"
+        enterKeyHint="go"
+        placeholder="Ask a question… “what's the range of fireball?”"
+        value={text}
+        onFocus={() => void askDownloaded().then((ok) => void (ok && prepareAsk().catch(() => {})))}
+        onChange={(e) => setText(e.target.value)} aria-label="Ask a question" />
+      {text.trim() && (
+        <button type="submit" className="btn primary ask-go">
+          Ask
+        </button>
+      )}
+    </form>
   );
 }

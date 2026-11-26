@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { cleanArticleHtml, summaryFrom } from './lib/wikihtml.mjs';
 import { packDatabase } from './lib/pack.mjs';
@@ -243,8 +244,13 @@ function exportDb(complete) {
   const meta = { version, articles: n, redirects: nr, complete: complete ? '1' : '0', source: 'https://forgottenrealms.fandom.com', license: 'CC BY-SA 3.0' };
   const insM = out.prepare('INSERT INTO meta VALUES (?,?)');
   for (const [k, v] of Object.entries(meta)) insM.run(k, String(v));
-  out.exec('VACUUM');
   out.close();
+  // Ask-box meaning index (needs Python + the model files; skipped with a warning otherwise)
+  const ask = spawnSync('python3', [path.join(path.dirname(fileURLToPath(import.meta.url)), 'ask', 'embed_wiki.py'), OUT_DB], { stdio: 'inherit' });
+  if (ask.status !== 0) log('  ! meaning index not built (run scripts/fetch-models.mjs and pip install onnxruntime tokenizers numpy)');
+  const vac = new DatabaseSync(OUT_DB);
+  vac.exec('VACUUM');
+  vac.close();
   const manifest = packDatabase(OUT_DB, OUT_DIR, { name: 'wiki', version, extra: { articles: n, redirects: nr, complete } });
   log(`  ${n} articles, ${nr} redirects → ${(manifest.dbBytes / 1e6).toFixed(1)} MB database, ${(manifest.downloadBytes / 1e6).toFixed(1)} MB download in ${manifest.parts.length} parts`);
 }

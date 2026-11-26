@@ -12,9 +12,10 @@ import { LibraryView, BookView } from './views/LibraryViews';
 import { BookEntryView, BookTocView } from './views/BookViews';
 import SavedView from './views/SavedView';
 import AboutView from './views/AboutView';
+import AskView from './views/AskView';
 
 const TABS = [
-  { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') },
+  { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') || p.startsWith('/ask') },
   { id: 'rules', label: 'Rules', href: '#/rules', match: (p: string) => p.startsWith('/rules') || p.startsWith('/srd') },
   { id: 'realms', label: 'Realms', href: '#/wiki', match: (p: string) => p.startsWith('/wiki') },
   { id: 'library', label: 'Books', href: '#/library', match: (p: string) => p.startsWith('/library') || p.startsWith('/book') },
@@ -64,6 +65,9 @@ export default function App() {
       break;
     case 'book':
       view = rest[1] ? <BookEntryView book={rest[0]} anchor={rest.slice(1).join('/')} /> : <BookTocView id={rest[0]} />;
+      break;
+    case 'ask':
+      view = <AskView route={route} />;
       break;
     case 'saved':
       view = <SavedView />;
