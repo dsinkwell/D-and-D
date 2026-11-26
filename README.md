@@ -11,7 +11,7 @@ A private D&D 3.5 + Forgotten Realms reference for Mac, iPad and iPhone. It's an
 
 1. Open the site in Safari.
 2. On iPhone/iPad tap **Share → Add to Home Screen**. On a Mac choose **File → Add to Dock**.
-3. In **Books**, enter the group passphrase. On the **Realms** tab, tap **Download** for the offline wiki (about 260 MB).
+3. In **Books**, enter the group passphrase. On the **Realms** tab, tap **Download** for the offline wiki (about 210 MB).
 
 ## How it's built
 
