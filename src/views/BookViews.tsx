@@ -97,7 +97,8 @@ export function BookTocView({ id }: { id: string }) {
   const [book, setBook] = useState<BookInfo | null | undefined>(undefined);
   const [toc, setToc] = useState<BookEntry[] | null>(null);
   const [filter, setFilter] = useState('');
-  const [depth, setDepth] = useState(3);
+  // 'outline' = the book's own outline at every depth; 'chapters'; 'all' = every heading
+  const [mode, setMode] = useState<'outline' | 'chapters' | 'all'>('outline');
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -110,12 +111,15 @@ export function BookTocView({ id }: { id: string }) {
   }, [id]);
 
   const minLevel = useMemo(() => Math.min(...(toc || []).map((e) => e.level), 9), [toc]);
+  const hasOutline = useMemo(() => (toc || []).filter((e) => e.outline).length >= 8, [toc]);
   const shown = useMemo(() => {
     if (!toc) return [];
     const f = filter.trim().toLowerCase();
-    if (f) return toc.filter((e) => e.title.toLowerCase().includes(f)).slice(0, 400);
-    return toc.filter((e) => e.level - minLevel < depth);
-  }, [toc, filter, depth, minLevel]);
+    if (f) return toc.filter((e) => e.title.toLowerCase().includes(f)).slice(0, 600);
+    if (mode === 'chapters') return toc.filter((e) => e.level === minLevel);
+    if (mode === 'outline') return hasOutline ? toc.filter((e) => e.outline && !/^Page \d+$/.test(e.title)) : toc.filter((e) => e.level - minLevel < 3);
+    return toc;
+  }, [toc, filter, mode, minLevel, hasOutline]);
 
   if (err) return <Notice kind="error">{err.includes('not installed') ? 'Unlock your group’s books under My Books first.' : err}</Notice>;
   if (book === null) return <Notice kind="error">That book isn’t in the built-in library.</Notice>;
@@ -127,18 +131,17 @@ export function BookTocView({ id }: { id: string }) {
       <div className="filters">
         <input className="filter-text" type="search" placeholder="Find in contents…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         {!filter && (
-          <select value={depth} onChange={(e) => setDepth(Number(e.target.value))} aria-label="Detail">
-            <option value={1}>Chapters only</option>
-            <option value={2}>2 levels</option>
-            <option value={3}>3 levels</option>
-            <option value={9}>Everything</option>
+          <select value={mode} onChange={(e) => setMode(e.target.value as 'outline' | 'chapters' | 'all')} aria-label="Detail">
+            <option value="outline">{hasOutline ? 'Book’s contents' : 'Main sections'}</option>
+            <option value="chapters">Chapters only</option>
+            <option value="all">Every heading</option>
           </select>
         )}
       </div>
       <ul className="list compact toc-list">
         {shown.map((e) => (
           <li key={e.id}>
-            <a className="row" href={bookEntryHref(e)} style={{ paddingLeft: 14 + Math.min(e.level - minLevel, 5) * 16 }}>
+            <a className="row" href={bookEntryHref(e)} style={{ paddingLeft: 14 + Math.min(e.level - minLevel, 7) * 13 }}>
               <div className="row-main">
                 <div className={`row-title ${e.level === minLevel ? 'chapter-row' : ''}`}>
                   {e.title}

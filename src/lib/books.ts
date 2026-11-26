@@ -40,6 +40,7 @@ export interface BookEntry {
   end: number;
   summary: string | null;
   meta: Record<string, any> | null;
+  outline?: number; // 1 = from the book's own outline (PDF bookmarks or printed contents)
 }
 
 export const booksReady = () => isInstalled('books');
@@ -65,7 +66,10 @@ const parse = (r: any): BookEntry => ({ ...r, meta: r.meta ? JSON.parse(r.meta) 
 const COLS = 'id, book, anchor, title, kind, level, parent, path, page, start, "end", summary, meta';
 
 export async function bookToc(book: string): Promise<BookEntry[]> {
-  return (await query('books', `SELECT ${COLS} FROM entries WHERE book = ? ORDER BY start`, [book])).map(parse);
+  // older packs have no outline column
+  const cols = await query<{ name: string }>('books', 'PRAGMA table_info(entries)');
+  const extra = cols.some((c) => c.name === 'outline') ? ', outline' : '';
+  return (await query('books', `SELECT ${COLS}${extra} FROM entries WHERE book = ? ORDER BY start`, [book])).map(parse);
 }
 
 export async function bookEntry(book: string, anchor: string): Promise<BookEntry | null> {

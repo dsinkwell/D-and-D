@@ -143,6 +143,8 @@ def detect_kind(title, own_text, child_titles):
         return 'spell'  # epic spells
     if re.search(r'\b(Discipline|Power Points):', head) and re.search(r'\bLevel:', head):
         return 'power'
+    if re.search(r'\bhp \d+ \(\d+ HD\)', head) and re.search(r'\b(Init [+\-–]\d|AC \d+|Speed \d)', head):
+        return 'monster'  # MM4/MM5 style stat block
     if re.search(r'\bHit Dice:\s', head) or (re.search(r'\bhp \d', head) and re.search(r'\bInit [+\-–]', head) and (re.search(r'\bCR \d', head) or re.search(r'\bCR \d', title))):
         return 'monster'
     if re.search(r'(^|\s)Benefit:', head[:1200]) and not re.search(r'\bHit Dice:', head):
@@ -278,6 +280,7 @@ def process_book(book_id, stream):
             'book': book_id, 'anchor': anchors[i], 'title': title,
             'kind': kind, 'level': lvl, 'parent': parent, 'path': ' › '.join(path[-3:]), 'page': e['page'],
             'start': i, 'end': end, 'summary': summary, 'meta': meta, 'text': own_text,
+            'outline': 1 if e.get('o') else 0,
         })
     mark_prestige_classes(stream, entries)
     flatten_leaf_entries(entries)
@@ -479,7 +482,8 @@ def write_db(results):
       CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT, short TEXT, shelf TEXT, edition TEXT, pages INTEGER, ord INTEGER);
       CREATE TABLE chunks (book TEXT, n INTEGER, data BLOB, PRIMARY KEY (book, n)) WITHOUT ROWID;
       CREATE TABLE entries (id INTEGER PRIMARY KEY, book TEXT, anchor TEXT, title TEXT COLLATE NOCASE, kind TEXT, level INTEGER,
-                            parent TEXT, path TEXT, page INTEGER, start INTEGER, "end" INTEGER, summary TEXT, meta TEXT);
+                            parent TEXT, path TEXT, page INTEGER, start INTEGER, "end" INTEGER, summary TEXT, meta TEXT,
+                            outline INTEGER DEFAULT 0);
       CREATE VIRTUAL TABLE fts USING fts5(title, body, content='', tokenize='unicode61 remove_diacritics 2');
     """)
     CHUNK = 200
@@ -490,9 +494,9 @@ def write_db(results):
             db.execute('INSERT INTO chunks VALUES (?,?,?)', (b[0], n // CHUNK, zlib.compress(json.dumps(blocks[n:n + CHUNK]).encode(), 9)[2:-4]))
         for e in entries:
             eid += 1
-            db.execute('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (
+            db.execute('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (
                 eid, e['book'], e['anchor'], e['title'], e['kind'], e['level'], e['parent'], e['path'], e['page'],
-                e['start'], e['end'], e['summary'], json.dumps(e['meta']) if e['meta'] else None))
+                e['start'], e['end'], e['summary'], json.dumps(e['meta']) if e['meta'] else None, e.get('outline', 0)))
             db.execute('INSERT INTO fts (rowid, title, body) VALUES (?,?,?)', (eid, e['title'], e['text']))
     db.executescript("""
       CREATE INDEX entries_book ON entries(book, start);

@@ -8,6 +8,8 @@ Heading styles are learned per book: the body style is the most common (font, si
 headings are short standalone lines in a larger or display font.
 """
 import collections
+import os
+import sys
 import html as htmllib
 import json
 import re
@@ -145,6 +147,9 @@ def fix_ligatures(text):
             return m.group(0)
         if w in VOCAB or (w.endswith('s') and w[:-1] in VOCAB):
             return a + b
+        for i in range(3, len(a) - 1):  # compounds: “Bloodfi re” = blood + fire
+            if a[:i].lower() in VOCAB and len(w) - i >= 4 and w[i:] in VOCAB:
+                return a + b
         return m.group(0)
     return LIG_SPLIT.sub(join, text.replace('ı', 'i'))
 
@@ -547,7 +552,8 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
     stream[:] = merged
     for e in stream:
         e.pop('_y', None)
-        e.pop('bm', None)
+        if e.pop('bm', None):
+            e['o'] = 1  # from the book's outline (bookmarks or printed contents)
         if e['t'] in ('h', 'cap'):
             e['text'] = fix_ligatures(e['text'])
         elif e['t'] == 'table':
@@ -625,7 +631,7 @@ def overlay_words(lines, words):
     return out
 
 
-JUNK_BOOKMARK = re.compile(r'(?i)^(my bookmarks|front cover|back cover|cover|table of contents|contents|credits|index|web enhancement\b.*)$')
+JUNK_BOOKMARK = re.compile(r'(?i)^(my bookmarks|front cover|back cover|cover|table of contents|contents|credits|index|web enhancement\b.*|tables|sidebars|maps?|figures|list of (numbered )?tables)\s*:?$')
 
 
 def chapter_bookmarks(raw):
@@ -645,7 +651,17 @@ def chapter_bookmarks(raw):
     return []
 
 
-def full_outline(raw):
+def _same_entry(a, b):
+    """Two bookmarks naming the same thing on the same page (“Table 2–4: The Argent Savant” in
+    the chapter and again in the list of tables)."""
+    import difflib
+    if a[2] != b[2]:
+        return False
+    strip = lambda t: _norm(re.sub(r'(?i)^(table|sidebar|map|figure)\s*:?\s*', '', t))
+    return difflib.SequenceMatcher(None, strip(a[1]), strip(b[1])).ratio() > 0.85
+
+
+def full_outline(raw, keep_all=True):
     """The PDF's bookmark outline as (level, title, page), level 1 = chapters. Wrapper levels
     (the book's own title, covers, contents) are dropped; in books whose chapters are named
     “Chapter …”, stray bookmarks filed at chapter level are moved one level down."""
@@ -660,11 +676,18 @@ def full_outline(raw):
         break
     if not rows:
         return []
-    # Bookmarks that point backwards in the book are filing mistakes (PHB's “Enlarge” among
-    # the “F” spells): drop them.
-    # Keep the longest run of bookmarks that moves forward through the book. Bookmarks that
-    # point backwards (PHB's trailing list of tables, MM's "Alphabetical listing" spike,
-    # stray "Enlarge") are cross-references, not structure.
+    # A heading bookmark that points a page or two past its own first child (chapter title
+    # pages are artwork) starts where that child starts.
+    rows = list(rows)
+    for i in range(len(rows) - 2, -1, -1):
+        lvl, title, page = rows[i]
+        nl, _, npage = rows[i + 1]
+        if nl > lvl and npage < page <= npage + 3:
+            rows[i] = (lvl, title, npage)
+    # The longest run of bookmarks that moves forward through the book is the structure.
+    # Every other bookmark (a sidebar or table filed out of page order, PHB's list of tables,
+    # a stray "Enlarge") is kept too, but nested one level under the structural bookmark
+    # whose pages it falls in, so it can never cut a chapter or section short.
     import bisect
     tails, tails_idx, prev_idx = [], [], [-1] * len(rows)
     for i, r in enumerate(rows):
@@ -674,24 +697,229 @@ def full_outline(raw):
         else:
             tails[k] = r[2]; tails_idx[k] = i
         prev_idx[i] = tails_idx[k - 1] if k > 0 else -1
-    keep, i = [], tails_idx[-1] if tails_idx else -1
+    keep, i = set(), tails_idx[-1] if tails_idx else -1
     while i >= 0:
-        keep.append(i)
+        keep.add(i)
         i = prev_idx[i]
-    rows = [rows[i] for i in sorted(keep)]
-    if not rows:
+    spine = [rows[i] for i in sorted(keep)]
+    if not spine:
         return []
-    base = min(r[0] for r in rows)
-    top = [r for r in rows if r[0] == base]
+    base = min(r[0] for r in spine)
     chapterish = re.compile(r'(?i)^(chapter|part|appendix|introduction|glossary|general guidelines|preface|foreword|epilogue|afterword)\b')
-    demote = sum(1 for r in top if re.match(r'(?i)^chapter\b', r[1])) >= 4
-    out = []
-    for lvl, title, page in rows:
-        level = lvl - base + 1
-        if demote and level == 1 and not chapterish.match(title):
+    demote = sum(1 for r in spine if r[0] == base and re.match(r'(?i)^chapter\b', r[1])) >= 4
+
+    def level_of(r):
+        level = max(1, r[0] - base + 1)
+        if demote and level == 1 and not chapterish.match(r[1]):
             level = 2
-        out.append((level, title, page))
+        return level
+
+    spine_pages = [r[2] for r in spine]
+    spine_levels = [level_of(r) for r in spine]
+    out = []
+    for i, r in enumerate(rows):
+        if i in keep:
+            out.append((level_of(r), r[1], r[2]))
+        elif not keep_all:
+            continue  # printed contents: lines out of page order are cross-reference lists
+        elif any(_same_entry(r, sp) for sp in spine[max(0, bisect.bisect_left(spine_pages, r[2]) - 3):bisect.bisect_right(spine_pages, r[2]) + 3]):
+            continue  # a second copy (the book's list of tables/sidebars) of a bookmark already in place
+        else:
+            k = bisect.bisect_right(spine_pages, r[2]) - 1
+            ctx = spine_levels[k] if k >= 0 else 0
+            out.append((ctx + 1, r[1], r[2]))
     return out
+
+
+BACK_MATTER = re.compile(r'(?i)^(glossary|index|appendix|monster feats|monsters (by|ranked)|list of|sample lair|full-page maps|'
+                         r'for player characters|power components|feats$|spells$|items$|weapons$|templates|credits|afterword)')
+TOC_LINE = re.compile(r'^(?P<t>.*?[A-Za-z].*?)\s*(?:[.·…•]\s*){2,}\s*(?P<p>\d{1,3})\s*$|^(?P<t2>.*?[A-Za-z][^.]*?)\s{2,}(?P<p2>\d{1,3})\s*$')
+
+
+def printed_outline(pages, find_title, max_scan=14):
+    """An outline read from the book's printed table of contents (dot-leader lines with page
+    numbers), for books whose PDF has few or no bookmarks. Indentation gives the level; a
+    line without a page number (“The Monsters”) is a group heading over the lines after it.
+    Printed page numbers are mapped to PDF pages by checking where the titles really print
+    (find_title(pdf_index, title) -> bool)."""
+    toc_pages = []
+    for i in range(min(max_scan, len(pages))):
+        n = sum(1 for l in pages[i][0] if TOC_LINE.match(l['text'].strip()))
+        if n >= 6:
+            toc_pages.append(i)
+        elif toc_pages:
+            break
+    if not toc_pages:
+        return []
+    raw = []
+    for i in toc_pages:
+        lines, W, H = pages[i]
+        for l in lines:
+            t = re.sub(r'\s+', ' ', l['text']).strip()
+            m = TOC_LINE.match(l['text'].strip())
+            if m:
+                title = (m.group('t') or m.group('t2') or '').strip(' .·…')
+                pg = int(m.group('p') or m.group('p2'))
+            elif (re.match(r'^[A-Z][A-Za-z ,’\'&:\-]{2,50}$', t) and not re.match(r'(?i)^(table of|contents?$)', t)
+                  and H * 0.08 < l['bbox'][1] < H * 0.95):
+                title, pg = t, None
+            else:
+                continue
+            title = re.sub(r'\s*[.·…]+$', '', title).strip()
+            if len(title) < 2 or not re.search(r'[A-Za-z]{2}', title):
+                continue
+            raw.append({'x': l['bbox'][0], 'page': i, 'title': title, 'pg': pg})
+    if sum(1 for r in raw if r['pg']) < 6:
+        return []
+    # columns: indent positions more than 60pt apart start a new column (2- and 3-column pages)
+    for pg_i in {r['page'] for r in raw}:
+        xs = sorted({r['x'] for r in raw if r['page'] == pg_i})
+        starts = [xs[0]]
+        for a, b in zip(xs, xs[1:]):
+            if b - a > 60:
+                starts.append(b)
+        for r in raw:
+            if r['page'] == pg_i:
+                r['col'] = max(i for i, st in enumerate(starts) if r['x'] >= st - 0.5)
+    # indentation rank within each page column
+    for key in {(r['page'], r['col']) for r in raw}:
+        grp = [r for r in raw if (r['page'], r['col']) == key]
+        x0 = min(r['x'] for r in grp)
+        for r in grp:
+            r['rel'] = r['x'] - x0
+    rels = sorted({round(r['rel']) for r in raw})
+    ranks, cur, last = {}, 0, None
+    for v in rels:
+        if last is not None and v - last > 3:
+            cur += 1
+        ranks[v] = cur
+        last = v
+    out, groups = [], []  # open group headings (unnumbered lines), by indent rank
+    for r in raw:
+        rank = ranks[round(r['rel'])]
+        if r['pg'] is None:
+            groups = [g for g in groups if g < rank]
+            r['level'] = rank + 1 + len(groups)
+            groups.append(rank)
+        else:
+            if rank == 0 and BACK_MATTER.match(r['title']):
+                groups = []  # “Glossary”, “Monster Feats”… come after the monsters, not in them
+            groups = [g for g in groups if g <= rank]
+            r['level'] = rank + 1 + len(groups)
+        out.append(r)
+    # group headings take the page of the next numbered line
+    nxt = None
+    for r in reversed(out):
+        if r['pg'] is None:
+            r['pg'] = nxt
+        else:
+            nxt = r['pg']
+    out = [r for r in out if r['pg']]
+    # printed page -> PDF page: the offset at which most titles are found
+    votes = collections.Counter()
+    for r in out[:80]:
+        for k in range(-4, 14):
+            idx = r['pg'] + k - 1
+            if 0 <= idx < len(pages) and idx not in toc_pages and find_title(idx, r['title']):
+                votes[k] += 1
+    if not votes:
+        return []
+    k = votes.most_common(1)[0][0]
+    rows, stack = [], []
+    for r in out:  # depth = number of open entries indented less than this one (no skipped levels)
+        while stack and stack[-1] >= r['level']:
+            stack.pop()
+        rows.append((len(stack) + 1, fix_ligatures(r['title']), r['pg'] + k))
+        stack.append(r['level'])
+    return full_outline(rows, keep_all=False)
+
+
+def words_to_segments(words, gap=22):
+    """OCR words → line segments: words on the same baseline, split where a horizontal gap
+    is wider than a column gutter (Tesseract joins a whole row of a multi-column page)."""
+    rows = []
+    for w in sorted(words, key=lambda w: ((w[1] + w[3]) / 2, w[0])):
+        cy = (w[1] + w[3]) / 2
+        if rows and abs(rows[-1]['cy'] - cy) < 4:
+            rows[-1]['w'].append(w)
+        else:
+            rows.append({'cy': cy, 'w': [w]})
+    out = []
+    for r in rows:
+        ws = sorted(r['w'], key=lambda w: w[0])
+        seg = [ws[0]]
+        for a, b in zip(ws, ws[1:]):
+            if b[0] - a[2] > gap and not re.fullmatch(r'[.·…]+', a[4]):
+                out.append(seg)
+                seg = []
+            seg.append(b)
+        out.append(seg)
+    lines = []
+    for seg in out:
+        text = ' '.join(w[4] for w in seg)
+        lines.append({'text': text, 'bbox': (min(w[0] for w in seg), min(w[1] for w in seg), max(w[2] for w in seg), max(w[3] for w in seg)), 'spans': []})
+    return lines
+
+
+def printed_outline_scanned(pdf_path, pages):
+    """Printed contents of a scanned book: find the contents page(s) in the OCR text, OCR them
+    again at 400 dpi for clean lines, and read them like a text PDF's contents."""
+    import difflib
+    sys_path = os.path.dirname(os.path.abspath(__file__))
+    if sys_path not in sys.path:
+        sys.path.insert(0, sys_path)
+    from ocr_pages import ocr_page_direct
+    doc = pymupdf.open(pdf_path)
+    cands = [i for i in range(min(14, len(pages))) if sum(1 for l in pages[i][0] if re.search(r'[A-Za-z]{3}.*(\.\s*){3,}\s*\d{1,3}\s*$', l['text'])) >= 3]
+    if not cands:
+        return []
+    segs, first = [], []
+    for i in cands:
+        first += [{'text': re.sub(r'\s+', ' ', l['text']), 'bbox': l['bbox']} for l in pages[i][0]]  # original OCR pass
+        p = ocr_page_direct(doc[i], 400)
+        segs += words_to_segments(p['words'])
+    segs = first + segs  # a complete line from either pass wins (see dedupe below)
+    # Scanned contents pages are noisy and often share the page with a sidebar list; trust
+    # only the chapter lines (“Chapter 5: The Transitive Planes ....45”, possibly wrapped).
+    found = []
+    segs = sorted(segs, key=lambda l: 0 if re.search(r'\d{1,3}\s*$', l['text']) else 1)
+    for k, l in enumerate(segs):
+        m = re.match(r'(?i)^(chapter \d+\s*:|appendix\s*:|introduction)\s*(.*)$', l['text'].strip())
+        if not m:
+            continue
+        rest = m.group(2)
+        if not re.search(r'\d{1,3}\s*$', rest):
+            below = [x for x in segs if abs(x['bbox'][0] - l['bbox'][0]) < 20 and 0 < x['bbox'][1] - l['bbox'][1] < 25]
+            if below:
+                rest += ' ' + min(below, key=lambda x: x['bbox'][1])['text']  # title wrapped onto the next line
+        pm = re.search(r'(\d{1,3})\s*(?:[A-Z].*)?$', rest)
+        title_part = re.split(r'\s*(?:[.·…,;:\-]\s*){2,}|\s+\d', rest)[0].strip(' .,;:-')
+        title_part = ' '.join(w for w in title_part.split() if word_quality(w) >= 1 or w[:1].isupper())
+        if pm:
+            key = m.group(1).rstrip(' :').title()
+            if any(f[0].split(':')[0] == key for f in found):
+                continue  # already have this chapter from a complete line
+            found.append((key + (': ' + title_part if title_part and not m.group(1).lower().startswith('intro') else ''), int(pm.group(1))))
+    if len(found) < 3:
+        return []
+    found.sort(key=lambda x: x[1])
+
+    def find(idx, title):
+        nt = _norm(re.sub(r'(?i)^(chapter \d+|appendix):\s*', '', title))[:20]
+        return len(nt) >= 5 and any(difflib.SequenceMatcher(None, nt, _norm(l['text'])[:len(nt)]).ratio() > 0.75 for l in pages[idx][0])
+    votes = collections.Counter()
+    for title, pg in found:
+        for k in range(-4, 14):
+            idx = pg + k - 1
+            if 0 <= idx < len(pages) and find(idx, title):
+                votes[k] += 1
+    off = votes.most_common(1)[0][0] if votes else 0
+    return [(1, title, pg + off) for title, pg in found]
+
+
+def title_on_page(lines, title):
+    nt = _norm(title)[:24]
+    return bool(nt) and any(_norm(l['text']).startswith(nt[:max(6, len(nt))]) for l in lines)
 
 
 def _norm(t):
@@ -745,16 +973,22 @@ def place_bookmarks(pages, toc, levels, page_offset=0):
         used = set()
         place = out.setdefault(pno, {})
         last = -1
-        for lvl, title in own:
+        unmatched = []
+        for k, (lvl, title) in enumerate(own):
             li, n = match(lines, texts, styles, used, title, last, False)
             if li is not None:
                 place.setdefault(li, []).append((lvl, title, n))
                 used.update(range(li, li + n))
                 last = li
-            elif pi + 1 < len(pages):
-                carry.setdefault(pno + 1, []).append((lvl, title))
             else:
+                unmatched.append((k, lvl, title))
+        matched_after = lambda k: any(i > k for i in range(len(own)) if all(u[0] != i for u in unmatched))
+        for k, lvl, title in unmatched:
+            if matched_after(k) or pi + 1 >= len(pages):
+                # its title isn't text (chapter art) but what follows it is here: top of this page
                 place.setdefault(-1, []).append((lvl, title, 0))
+            else:
+                carry.setdefault(pno + 1, []).append((lvl, title))
         for lvl, title in carried:
             li, n = match(lines, texts, styles, used, title, -1, True)
             if li is not None:
@@ -772,6 +1006,14 @@ def extract(pdf_path=None, ocr_path=None, page_offset=0, words_path=None):
         pages = [page_lines_ocr(p) for p in data['pages']]
         if pdf_path:
             outline = full_outline(pymupdf.open(pdf_path).get_toc())
+            if len(outline) < 15:
+                chapters = printed_outline_scanned(pdf_path, pages)
+                if chapters:  # chapters from the printed contents, one section per page under them
+                    outline = []
+                    for k, (lvl, title, page) in enumerate(chapters):
+                        end = chapters[k + 1][2] if k + 1 < len(chapters) else len(pages) + 1
+                        outline.append((1, title, page))
+                        outline += [(2, f'Page {p}', p) for p in range(page, end)]
             if len(outline) >= 15:
                 toc = {}
                 for lvl, title, page in outline:
@@ -785,6 +1027,9 @@ def extract(pdf_path=None, ocr_path=None, page_offset=0, words_path=None):
     body_size, levels = learn_styles(pages)
     if not ocr_path and pdf_path:
         outline = full_outline(pymupdf.open(pdf_path).get_toc())
+        printed = printed_outline(pages, lambda idx, title: title_on_page(pages[idx][0], title))
+        if len(printed) > max(len(outline) * 1.5, 20) and len(outline) < 80:
+            outline = printed  # thin bookmarks (MM4/MM5 have only A–Z): use the printed contents
         if len(outline) >= 40:
             # The book's own outline gives chapters, sections and often every entry; headings
             # found from font sizes nest below its deepest level.
