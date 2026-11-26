@@ -361,6 +361,8 @@ const CREATURE_TYPES = ['aberration', 'animal', 'construct', 'dragon', 'elementa
 /** "level 3 cleric spells", "evocation spells for wizards", "undead monsters cr 4 to 6" → a filtered list. */
 export async function listAnswer(q: string): Promise<ListAnswer | null> {
   const s = q.toLowerCase().replace(/[?!.]+$/, '');
+  // "can a wizard cast spells in armor?" is a question about a rule, not a request for a list
+  if (/^(can|could|does|do|did|is|are|was|how|why|when|should|will|would|what happens|what if)\b/.test(s.trim())) return null;
   if (/\bspells?\b/.test(s)) {
     let cls = '';
     for (const [w, c] of Object.entries(CLASS_WORDS)) if (new RegExp(`\\b${w.replace('/', '\\/')}\\b`).test(s)) cls = c;
