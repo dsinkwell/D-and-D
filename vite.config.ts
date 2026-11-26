@@ -30,10 +30,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,json,webmanifest,wasm}'],
         // The offline wiki/books databases are downloaded explicitly into OPFS, not precached.
         // The Ask model/runtime (~47 MB) is opt-in: downloaded from the Ask page into its own cache.
-        globIgnores: ['data/**', 'models/**', 'ort/**', 'ask/**'],
+        globIgnores: ['data/**', 'models/**', 'ort/**', 'ask/**', 'lab/**'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/data\//, /\/models\//, /\/ort\//, /\/ask\//],
+        navigateFallbackDenylist: [/\/data\//, /\/models\//, /\/ort\//, /\/ask\//, /\/lab\//],
         runtimeCaching: [
           {
             // Ask: model, ONNX runtime and SRD meaning index, stored by downloadAsk() in this cache.

@@ -1909,3 +1909,70 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
 .ask-model .progress {
   flex: 1 1 200px;
 }
+
+/* ------------------------------------------------------------------ lab (hidden test page) */
+
+.lab-card h2 {
+  font-size: 17px;
+}
+.lab-models {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+.lab-model {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.lab-model.on {
+  border-color: var(--accent);
+}
+.lab-model input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.lab-ok {
+  color: #2d7a3a;
+  font-weight: 600;
+}
+.lab-stat {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.lab-run {
+  padding: 4px 2px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.lab-run h3 {
+  font-size: 16px;
+  margin: 10px 0 6px;
+}
+.lab-answer {
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin: 0 0 6px;
+}
+.lab-sources {
+  font-size: 13px;
+}
+.lab-report {
+  width: 100%;
+  margin-top: 10px;
+  font: 12px/1.4 ui-monospace, Menlo, monospace;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.lab-foot {
+  margin: 20px 0;
+}

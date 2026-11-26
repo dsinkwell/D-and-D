@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview",
-    "prebuild": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/fetch-models.mjs",
-    "predev": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs",
+    "prebuild": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/copy-lab.mjs && node scripts/fetch-models.mjs",
+    "predev": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/copy-lab.mjs",
     "fetch:models": "node scripts/fetch-models.mjs"
   },
   "dependencies": {
@@ -20,7 +20,8 @@
     "minisearch": "^7.2.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tjs4": "npm:@huggingface/transformers@^4.3.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.32",
