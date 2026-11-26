@@ -119,7 +119,7 @@ export default function SearchView({ route }: { route: Route }) {
   return (
     <div className="page search-page">
       <div className="search-top">
-        <h1 className="search-heading">Realms Codex</h1>
+        <h1 className="search-heading">3.5 Forgotten Realms Reference</h1>
         <form
           className="searchbar"
           role="search"
