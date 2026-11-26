@@ -45,6 +45,24 @@ jobs:
           key: wiki-cache-${{ github.run_id }}
           restore-keys: wiki-cache-
 
+      # Fandom throttles GitHub's servers (bursts of ~250 articles, then ~15-minute blocks), so
+      # a full download here would take many hours. The `wiki-seed` branch holds a complete
+      # copy of the cache; use it when the saved cache is missing or incomplete.
+      - name: Use the starting wiki copy if needed
+        env:
+          NODE_NO_WARNINGS: '1'
+        run: |
+          n=$(node -e "try{const {DatabaseSync}=require('node:sqlite');console.log(new DatabaseSync('data-build/wiki-cache.db',{readOnly:true}).prepare('SELECT count(*) n FROM pages').get().n)}catch{console.log(0)}")
+          echo "Articles in saved cache: $n"
+          if [ "$n" -lt 60000 ]; then
+            git fetch --depth 1 origin wiki-seed
+            git archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP"
+            mkdir -p data-build
+            rm -f data-build/wiki-cache.db*
+            cat "$RUNNER_TEMP"/wiki-cache.db.part-* > data-build/wiki-cache.db
+            echo "$(cat "$RUNNER_TEMP"/wiki-cache.db.sha256)  data-build/wiki-cache.db" | sha256sum -c
+          fi
+
       - name: Refresh offline wiki (changed articles only)
         run: node scripts/build-wiki.mjs --max-minutes 280 --concurrency 3
         env:

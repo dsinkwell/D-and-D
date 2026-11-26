@@ -41,6 +41,7 @@ The user was frustrated by the first version (SRD only + per-device PDF import +
 - **App:** `src/lib/books.ts` and `src/views/BookViews.tsx` (unlock card, shelves, TOC, entry view with prev/next). Books are integrated into Search ("Rulebooks"), the Rules category lists ("From your rulebooks"), the new Deities tile, and SRD entries ("In your books").
 - **Passphrase:** test builds used `test-only-passphrase`. The real one must come from the user, followed by a re-pack: `BOOKS_PASSPHRASE=… python3 scripts/books/build_books.py <books dir>`. Commit `public/data/books/` only when it's encrypted with the real passphrase.
 - **Wiki:** the full crawl was running (about 25k / 62k). The cache is `data-build/wiki-cache.db` (not in git). CI (`.github/workflows/deploy.yml`) rebuilds and refreshes the wiki weekly with a cached DB.
+- **CI wiki seed:** Fandom throttles GitHub runners (~250 articles, then ~15 min blocked), so CI cannot do a full crawl. The orphan branch `wiki-seed` holds a complete `wiki-cache.db` (split into parts); the workflow restores it when the Actions cache has fewer than 60,000 pages. Weekly runs then fetch only changed articles.
 - **Hosting:** needs a GitHub repo (the user is connecting GitHub via https://claude.ai/connect-github) and Pages source set to "GitHub Actions".
 
 ## Commands
