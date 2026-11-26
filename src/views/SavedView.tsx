@@ -57,7 +57,7 @@ export default function SavedView() {
       setBookmarks([...map.values()].sort((a, b) => b.at - a.at));
       setMsg(`Imported ${incoming.length} bookmarks.`);
     } catch {
-      setMsg('That file is not a Realms Codex bookmarks export.');
+      setMsg('That file is not a bookmarks export from this app.');
     }
     if (fileRef.current) fileRef.current.value = '';
   };

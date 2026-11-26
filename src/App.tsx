@@ -80,7 +80,7 @@ export default function App() {
       <nav className="sidebar" aria-label="Main">
         <a className="brand" href="#/">
           <img src="icons/icon.svg" alt="" width={30} height={30} />
-          <span>Realms Codex</span>
+          <span>3.5 Forgotten Realms Reference</span>
         </a>
         {TABS.map((t) => (
           <a key={t.id} href={t.href} className={`nav-item ${t.match(route.path) ? 'active' : ''}`}>

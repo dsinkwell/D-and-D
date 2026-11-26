@@ -159,10 +159,11 @@ select {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-family: var(--serif);
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.2;
+    font-weight: 750;
+    color: var(--accent);
     text-decoration: none;
     padding: 4px 10px 16px;
   }

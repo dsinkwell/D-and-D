@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'icons/*.svg'],
       manifest: {
-        name: 'Realms Codex',
-        short_name: 'Codex',
+        name: '3.5 Forgotten Realms Reference',
+        short_name: 'FR Reference',
         description: 'D&D 3.5 rules (SRD), the Forgotten Realms Wiki, and your own rulebooks — offline on Mac, iPad and iPhone.',
         theme_color: '#7a1f1f',
         background_color: '#f6f1e6',
