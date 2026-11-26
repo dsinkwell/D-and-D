@@ -15,6 +15,8 @@ import {
   resetBooksCache,
 } from '../lib/books';
 import { useDbStatus } from '../lib/db';
+import { catalog, nameKey, resetCatalog, Source } from '../lib/catalog';
+import { Category } from '../lib/srd';
 import { OfflineDataCard } from '../OfflineData';
 
 const PASS_KEY = 'rc.books.pass.hint';
@@ -30,6 +32,7 @@ export function BuiltInBooks() {
   useEffect(() => {
     if (!installed) return;
     resetBooksCache();
+    resetCatalog();
     listBuiltInBooks().then(setBooks).catch(() => setBooks([]));
   }, [installed, status?.installed.books]);
 
@@ -158,6 +161,22 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
   const [html, setHtml] = useState<string | null>(null);
   const [nav, setNav] = useState<{ prev: BookEntry | null; next: BookEntry | null }>({ prev: null, next: null });
   const [err, setErr] = useState<string | null>(null);
+  const [also, setAlso] = useState<Source[]>([]);
+
+  useEffect(() => {
+    setAlso([]);
+    if (!entry || entry.kind === 'rule') return;
+    let live = true;
+    catalog(entry.kind as Category)
+      .then((items) => {
+        const it = items.find((x) => x.key === nameKey(entry.title));
+        if (live && it) setAlso(it.sources.filter((s) => !(s.book === entry.book && s.page === entry.page)));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [entry]);
 
   useEffect(() => {
     let live = true;
@@ -206,6 +225,16 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
           {m.slot && <span>Slot: {m.slot}</span>}
           {m.ftype && <span>{m.ftype}</span>}
           {m.portfolio && <span>Portfolio: {m.portfolio}</span>}
+        </div>
+      )}
+      {also.length > 0 && (
+        <div className="crosslinks">
+          <span className="muted small">Also in:</span>
+          {also.map((s) => (
+            <a key={s.href} className="pill small" href={s.href}>
+              {s.label}
+            </a>
+          ))}
         </div>
       )}
       <div className="content book" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">(This heading has no text of its own — see the sections below.)</p>' }} />

@@ -3,17 +3,19 @@ import { Icon, Notice, SourceBadge, useDebounced, useOnline } from '../component
 import { getHistory } from '../lib/bookmarks';
 import { BookHit, highlight, listBooks, searchBooks } from '../lib/library';
 import { navigate, Route, wikiHref } from '../lib/router';
-import { CATEGORY_LABEL, entryHref, searchSrd, SrdHit, titleSearch } from '../lib/srd';
+import { CATEGORY_LABEL } from '../lib/srd';
 import { searchWikiBest, WikiSearchHit } from '../lib/wiki';
 import { OfflineDataCard } from '../OfflineData';
-import { BOOK_KIND_LABEL, bookEntryHref, BookHit as RulebookHit, booksReady, searchBuiltIn } from '../lib/books';
+import { booksReady } from '../lib/books';
+import { CatalogItem, searchRules } from '../lib/catalog';
+import { CatalogRow } from './CategoryView';
 
 type Scope = 'all' | 'rules' | 'books' | 'wiki';
 const SCOPES: { id: Scope; label: string }[] = [
   { id: 'all', label: 'Everything' },
-  { id: 'rules', label: 'Rules (SRD)' },
+  { id: 'rules', label: 'Rules & books' },
   { id: 'wiki', label: 'Realms Wiki' },
-  { id: 'books', label: 'Rulebooks' },
+  { id: 'books', label: 'Extra PDFs' },
 ];
 
 const QUICK = [
@@ -38,11 +40,10 @@ export default function SearchView({ route }: { route: Route }) {
   const online = useOnline();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [srd, setSrd] = useState<SrdHit[] | null>(null);
+  const [rules, setRules] = useState<CatalogItem[] | null>(null);
   const [books, setBooks] = useState<BookHit[] | null>(null);
   const [haveBooks, setHaveBooks] = useState(false);
   const [haveRulebooks, setHaveRulebooks] = useState(false);
-  const [rulebooks, setRulebooks] = useState<RulebookHit[] | null>(null);
   const [wiki, setWiki] = useState<WikiSearchHit[] | null>(null);
   const [wikiErr, setWikiErr] = useState<string | null>(null);
   const [wikiMode, setWikiMode] = useState<'offline' | 'live' | 'saved'>('live');
@@ -75,15 +76,12 @@ export default function SearchView({ route }: { route: Route }) {
     let live = true;
     const query = dq.trim();
     if (!query) {
-      setSrd(null);
+      setRules(null);
       setBooks(null);
-      setRulebooks(null);
       return;
     }
-    titleSearch(query, 20).then((r) => live && setSrd((cur) => cur ?? r));
-    searchSrd(query, 80).then((r) => live && setSrd(r));
+    searchRules(query, 80).then((r) => live && setRules(r)).catch(() => live && setRules([]));
     if (haveBooks) searchBooks(query, { limit: 60 }).then((r) => live && setBooks(r));
-    if (haveRulebooks) searchBuiltIn(query, 80).then((r) => live && setRulebooks(r)).catch(() => {});
     return () => {
       live = false;
     };
@@ -151,7 +149,7 @@ export default function SearchView({ route }: { route: Route }) {
           )}
         </form>
         <div className="chips" role="tablist">
-          {SCOPES.filter((s) => s.id !== 'books' || haveBooks || haveRulebooks).map((s) => (
+          {SCOPES.filter((s) => s.id !== 'books' || haveBooks).map((s) => (
             <button key={s.id} role="tab" aria-selected={scope === s.id} className={`chip ${scope === s.id ? 'active' : ''}`} onClick={() => setScope(s.id)}>
               {s.label}
             </button>
@@ -196,25 +194,20 @@ export default function SearchView({ route }: { route: Route }) {
       {query && (scope === 'all' || scope === 'rules') && (
         <section className="results">
           <h2 className="section-title">
-            Rules <span className="muted">· 3.5 SRD</span>
+            Rules <span className="muted">· {haveRulebooks ? 'your books and the 3.5 SRD' : '3.5 SRD'}</span>
           </h2>
-          {srd && srd.length === 0 && <p className="muted">No rules found for “{query}”.</p>}
+          {rules === null && <p className="muted">Searching…</p>}
+          {rules && rules.length === 0 && <p className="muted">No rules found for “{query}”.</p>}
           <ul className="list">
-            {srd?.slice(0, limit(10)).map(({ entry }) => (
-              <li key={entry.i}>
-                <a className="row" href={entryHref(entry)}>
-                  <span className={`cat cat-${entry.c}`}>{CATEGORY_LABEL[entry.c]}</span>
-                  <div className="row-main">
-                    <div className="row-title">{entry.t}</div>
-                    <div className="row-sub">{entry.x || entry.p}</div>
-                  </div>
-                </a>
+            {rules?.slice(0, limit(12)).map((r) => (
+              <li key={r.key}>
+                <CatalogRow item={r} badge={r.kind === 'rule' ? 'Rules' : CATEGORY_LABEL[r.kind]} />
               </li>
             ))}
           </ul>
-          {scope === 'all' && srd && srd.length > 10 && (
+          {scope === 'all' && rules && rules.length > 12 && (
             <button className="more" onClick={() => setScope('rules')}>
-              All {srd.length >= 80 ? '80+' : srd.length} rules results →
+              All {rules.length >= 80 ? '80+' : rules.length} rules results →
             </button>
           )}
         </section>
@@ -245,40 +238,6 @@ export default function SearchView({ route }: { route: Route }) {
           {scope === 'all' && wiki && wiki.length > 8 && (
             <button className="more" onClick={() => setScope('wiki')}>
               More wiki results →
-            </button>
-          )}
-        </section>
-      )}
-
-      {query && haveRulebooks && (scope === 'all' || scope === 'books') && (
-        <section className="results">
-          <h2 className="section-title">
-            Rulebooks <span className="muted">· core, Forgotten Realms &amp; supplements</span>
-          </h2>
-          {rulebooks && rulebooks.length === 0 && <p className="muted">No matches in the rulebooks.</p>}
-          <ul className="list">
-            {rulebooks?.slice(0, limit(10)).map(({ entry, bookShort }) => (
-              <li key={entry.id}>
-                <a className="row" href={bookEntryHref(entry)}>
-                  <span className={`cat cat-${entry.kind === 'rule' ? 'book' : entry.kind === 'deity' ? 'class' : entry.kind}`}>
-                    {entry.kind === 'rule' ? bookShort : BOOK_KIND_LABEL[entry.kind]}
-                  </span>
-                  <div className="row-main">
-                    <div className="row-title">
-                      {entry.title}
-                      <span className="row-meta">
-                        {bookShort} p. {entry.page}
-                      </span>
-                    </div>
-                    <div className="row-sub">{entry.summary || entry.path}</div>
-                  </div>
-                </a>
-              </li>
-            ))}
-          </ul>
-          {scope === 'all' && rulebooks && rulebooks.length > 10 && (
-            <button className="more" onClick={() => setScope('books')}>
-              All {rulebooks.length >= 80 ? '80+' : rulebooks.length} rulebook results →
             </button>
           )}
         </section>

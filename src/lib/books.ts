@@ -2,7 +2,7 @@
 // once it has been unlocked and installed on this device.
 import { ftsQuery, inflate, isInstalled, query } from './db';
 
-export type BookKind = 'spell' | 'feat' | 'monster' | 'prestige' | 'class' | 'deity' | 'item' | 'power' | 'rule';
+export type BookKind = 'spell' | 'feat' | 'monster' | 'prestige' | 'class' | 'deity' | 'item' | 'trap' | 'power' | 'rule';
 
 export const BOOK_KIND_LABEL: Record<BookKind, string> = {
   spell: 'Spell',
@@ -12,6 +12,7 @@ export const BOOK_KIND_LABEL: Record<BookKind, string> = {
   class: 'Class',
   deity: 'Deity',
   item: 'Magic item',
+  trap: 'Trap',
   power: 'Psionic power',
   rule: 'Section',
 };

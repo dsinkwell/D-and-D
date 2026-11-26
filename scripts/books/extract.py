@@ -33,7 +33,7 @@ def esc(s):
 def page_lines_pdf(page):
     """Lines with spans, in two-column reading order."""
     W, H = page.rect.width, page.rect.height
-    d = page.get_text('dict', flags=pymupdf.TEXT_PRESERVE_WHITESPACE | pymupdf.TEXT_MEDIABOX_CLIP)
+    d = page.get_text('rawdict', flags=pymupdf.TEXT_PRESERVE_WHITESPACE | pymupdf.TEXT_MEDIABOX_CLIP)
     blocks = []
     for b in d['blocks']:
         if b.get('type') != 0:
@@ -43,7 +43,17 @@ def page_lines_pdf(page):
             dx, dy = l.get('dir', (1, 0))
             if abs(dy) > 0.2 or dx < 0.8:
                 continue  # rotated side tabs ("CHAPTER 3: CLASSES") and other vertical text
-            spans = [s for s in l['spans'] if s['text'].strip() and s['size'] >= 4]
+            respace_line(l)
+            spans = []
+            pending_space = False
+            for sp in l['spans']:
+                if not sp['text'].strip() or sp['size'] < 4:
+                    pending_space = pending_space or (sp['text'] != '' and spans != [])
+                    continue  # whitespace-only spans carry the word spaces in some PDFs (MM2)
+                if pending_space and not sp['text'][:1].isspace() and not spans[-1]['text'][-1:].isspace():
+                    sp['text'] = ' ' + sp['text']
+                pending_space = False
+                spans.append(sp)
             if not spans:
                 continue
             text = ''.join(s['text'] for s in spans).strip()
@@ -55,6 +65,28 @@ def page_lines_pdf(page):
             y0 = min(l['bbox'][1] for l in lines); y1 = max(l['bbox'][3] for l in lines)
             blocks.append({'lines': lines, 'bbox': (x0, y0, x1, y1)})
     return order_blocks(blocks, W, H), W, H
+
+
+def respace_line(line):
+    """Rebuild span text from character positions, putting back word spaces that some PDFs
+    (Monster Manual II, Shining South) encode only as gaps: “dealingit1d6pointsof”."""
+    prev = None  # last character of the line so far
+    for s in line['spans']:
+        chars = s.get('chars')
+        if chars is None:
+            continue
+        out = []
+        # Letter gaps cluster around a (often negative) typical value; a word gap is clearly wider.
+        gaps = sorted(b['bbox'][0] - a['bbox'][2] for a, b in zip(chars, chars[1:]) if a['c'] != ' ' and b['c'] != ' ')
+        typical = gaps[len(gaps) // 2] if gaps else 0
+        gap_min = max(typical, -s['size'] * 0.1) + s['size'] * 0.1
+        for ch in chars:
+            c = ch['c']
+            if prev is not None and c != ' ' and prev['c'] != ' ' and ch['bbox'][0] - prev['bbox'][2] > gap_min:
+                out.append(' ')
+            out.append(c)
+            prev = ch
+        s['text'] = ''.join(out)
 
 
 WORD = re.compile(r"^[(\"“‘']?([A-Za-z][a-z'’\-]*[a-z]|[A-Z][A-Z'’\-]+|[A-Za-z]|\d+(st|nd|rd|th|d\d+|%|gp|ft\.?)?|\d+[–\-/]\d+)[)\"”’'.,;:!?]*$")
@@ -141,13 +173,16 @@ def order_blocks(blocks, W, H):
             cols.append([x])
     # Keep only real columns: enough blocks/lines start there, and columns are well apart.
     min_count = max(2, int(len(narrow) * 0.08))
+    # A column's edge is where most of its blocks start (the median), not its leftmost member:
+    # a page number or running header just left of a column must not drag the edge over.
     starts = []
-    for c in sorted(cols, key=lambda c: min(c)):
+    for c in sorted(cols, key=lambda c: sorted(c)[len(c) // 2]):
         if len(c) < min_count:
             continue
-        if starts and min(c) - starts[-1] < W * 0.2:
+        edge = sorted(c)[len(c) // 2]
+        if starts and edge - starts[-1] < W * 0.2:
             continue
-        starts.append(min(c))
+        starts.append(edge)
     starts = starts or [0]
 
     def col_of(b):
@@ -168,9 +203,13 @@ def order_blocks(blocks, W, H):
     wide = sorted([b for b in blocks if is_wide(b)], key=lambda b: b['bbox'][1])
     rest = [b for b in blocks if not is_wide(b)]
     out, top = [], -1
+    emitted = set()
     for f in wide + [None]:
-        bottom = f['bbox'][1] if f else H + 1
-        band = [b for b in rest if top <= (b['bbox'][1] + b['bbox'][3]) / 2 < bottom]
+        bottom = f['bbox'][1] if f else float('inf')
+        # Everything above this wide block that hasn't been read yet (a tall wide block can
+        # overlap the next one, so a strict [top, bottom) band would drop text).
+        band = [b for b in rest if id(b) not in emitted and (b['bbox'][1] + b['bbox'][3]) / 2 < bottom]
+        emitted.update(id(b) for b in band)
         for ci in range(len(starts)):
             out += sorted([b for b in band if col_of(b) == ci], key=lambda b: b['bbox'][1])
         if f:
@@ -243,12 +282,31 @@ def learn_styles(pages):
 
 # ---------------------------------------------------------------------------- stream building
 
+LEAD_FONTS = set()
+
+
+def learn_lead_fonts(pages, body_font):
+    """Fonts used for run-in names (“Amulet of Proof Against Petrification:”) even when the
+    font's name doesn't say Bold: they mostly open a line and end with a colon."""
+    lead, total = collections.Counter(), collections.Counter()
+    for lines, W, H in pages:
+        for l in lines:
+            for k, s in enumerate(l['spans']):
+                total[s['font']] += 1
+                if k == 0 and len(s['text'].strip()) <= 60 and s['text'].strip().endswith(':'):
+                    lead[s['font']] += 1
+    LEAD_FONTS.clear()
+    for f, n in lead.items():
+        if f != body_font and n >= 8 and n >= total[f] * 0.4 and not BOLD.search(f) and not ITALIC.search(f):
+            LEAD_FONTS.add(f)
+
+
 def span_html(spans):
     out = []
     for s in spans:
         t = esc(s['text'])
         f = s['font']
-        b = bool(BOLD.search(f)) or (s.get('flags', 0) & 16)
+        b = bool(BOLD.search(f)) or (s.get('flags', 0) & 16) or f in LEAD_FONTS
         i = bool(ITALIC.search(f)) or (s.get('flags', 0) & 2)
         if b and t.strip():
             t = f'<b>{t}</b>'
@@ -361,6 +419,10 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 stream.append({'t': 'cap', 'text': text, 'page': pno})
                 prev_bottom = y1
                 continue
+            if re.match(r'^\[[A-Za-z ,\-]+\]$', text) and para is None and table is None and stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno:
+                stream[-1]['text'] += ' ' + text  # “[General]” set on its own line under a feat name
+                prev_bottom = y1
+                continue
             st = line_style(l)
             lvl = levels.get(st)
             if lvl and st[0] == 'OCR' and (len(text.split()) > 7 or word_quality(text) < 0.95 or text.endswith(('.', ',', ';')) or not text[:1].isupper()):
@@ -399,7 +461,7 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
             flush_table()
             html = span_html(l['spans'])
             gap = (y0 - prev_bottom) if prev_bottom is not None else 0
-            starts_bold = l['spans'][0]['text'].strip() and BOLD.search(l['spans'][0]['font'])
+            starts_bold = l['spans'][0]['text'].strip() and (BOLD.search(l['spans'][0]['font']) or l['spans'][0]['font'] in LEAD_FONTS)
             new_para = para is None or gap > body_size * 0.55 or gap < -body_size * 3 or (starts_bold and para['text'].rstrip().endswith(('.', ':', '!', '?', ')')))
             if para and not para['text'].rstrip().endswith(('.', '!', '?', ':', '”', '"')) and text[:1].islower() and not starts_bold:
                 new_para = False  # paragraph continues in the next column or on the next page
@@ -422,7 +484,97 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
     return stream
 
 
-def extract(pdf_path=None, ocr_path=None, page_offset=0):
+OCR_DIGITS = str.maketrans({'S': '5', 's': '5', 'I': '1', 'l': '1', 'O': '0', 'o': '0', 'G': '6', 'B': '8', 'Z': '2'})
+
+
+def fix_ocr_word(w):
+    """Ordinals and numbers misread with look-alike letters: “Sth” → “5th”, “lst” → “1st”, “1G” → “16”."""
+    m = re.fullmatch(r'([(]?)([0-9SsIlOoGBZ]{1,3})(st|nd|rd|th)([).,;:]*)', w)
+    if m and not m.group(2).isdigit() and m.group(2) + m.group(3) not in ('st', 'Sst'):
+        return m.group(1) + m.group(2).translate(OCR_DIGITS) + m.group(3) + m.group(4)
+    m = re.fullmatch(r'([(]?)(\d[0-9SIlOGBZ]|[0-9SIlOGBZ]\d)([).,;:]*)', w)
+    if m:
+        return m.group(1) + m.group(2).translate(OCR_DIGITS) + m.group(3)
+    return w
+
+
+def overlay_words(lines, words):
+    """Replace each line's (garbled) text with the OCR words that sit inside it, keeping the
+    PDF's spans, fonts and positions. Each word goes to the line whose middle is nearest;
+    lines that get no words keep their text only if it reads as real words."""
+    # Tesseract sometimes reads part of a line twice (a squat copy of the same words): drop a
+    # word that mostly overlaps a taller one.
+    words = sorted(words, key=lambda w: -(w[3] - w[1]))
+    kept_words = []
+    for w in words:
+        dup = False
+        for k in kept_words:
+            ox = min(w[2], k[2]) - max(w[0], k[0])
+            oy = min(w[3], k[3]) - max(w[1], k[1])
+            if ox > 0.5 * min(w[2] - w[0], k[2] - k[0]) and oy > 0.3 * (w[3] - w[1]):
+                dup = True
+                break
+        if not dup:
+            kept_words.append(w)
+    words = kept_words
+    buckets_by_line = [[] for _ in lines]
+    for w in words:
+        cx, cy = (w[0] + w[2]) / 2, (w[1] + w[3]) / 2
+        best, best_d = None, None
+        for i, l in enumerate(lines):
+            x0, y0, x1, y1 = l['bbox']
+            pad = (y1 - y0) * 0.2
+            if x0 - 3 <= cx <= x1 + 3 and y0 - pad <= cy <= y1 + pad:
+                d = abs(cy - (y0 + y1) / 2)
+                if best_d is None or d < best_d:
+                    best, best_d = i, d
+        if best is not None:
+            buckets_by_line[best].append(((cx), fix_ocr_word(w[4])))
+    out = []
+    for l, mine in zip(lines, buckets_by_line):
+        if not mine:
+            if word_quality(l['text']) >= 0.8:
+                out.append(l)
+            continue
+        mine.sort()
+        spans = l['spans']
+        buckets = [[] for _ in spans]
+        for cx, word in mine:
+            best = min(range(len(spans)), key=lambda i: 0 if spans[i]['bbox'][0] - 1 <= cx <= spans[i]['bbox'][2] + 1 else min(abs(cx - spans[i]['bbox'][0]), abs(cx - spans[i]['bbox'][2])))
+            buckets[best].append(word)
+        kept = []
+        for sp, ws in zip(spans, buckets):
+            if ws:
+                sp['text'] = (' ' if kept else '') + ' '.join(ws)
+                kept.append(sp)
+        l['spans'] = kept
+        l['text'] = ''.join(sp['text'] for sp in kept).strip()
+        if l['text'] and not WATERMARK.search(l['text']):
+            out.append(l)
+    return out
+
+
+JUNK_BOOKMARK = re.compile(r'(?i)^(my bookmarks|front cover|back cover|cover|table of contents|contents|credits|index|web enhancement\b.*)$')
+
+
+def chapter_bookmarks(raw):
+    """The bookmark level that holds the chapters: the first level with at least four real
+    entries (skipping wrappers such as the book's own title, covers and contents)."""
+    rows = [(lvl, re.sub(r'\s+', ' ', title).strip(), page) for lvl, title, page in raw if page > 0]
+    rows = [r for r in rows if r[1] and not JUNK_BOOKMARK.match(r[1])]
+    for lvl in sorted({r[0] for r in rows}):
+        at = [r for r in rows if r[0] == lvl]
+        if len(at) >= 4:
+            if len(at) > 60:
+                return []  # entry-level bookmarks, not chapters
+            named = [r for r in at if re.match(r'(?i)^chapter\b', r[1])]
+            if len(named) >= 4:  # keep real chapters; drop stray bookmarks filed at this level
+                at = [r for r in at if r in named or re.match(r'(?i)^(introduction|appendix|glossary|general guidelines|preface|foreword|epilogue|afterword)', r[1])]
+            return [(page, title) for _, title, page in at]
+    return []
+
+
+def extract(pdf_path=None, ocr_path=None, page_offset=0, words_path=None):
     toc = None
     if ocr_path:
         data = json.load(open(ocr_path))
@@ -437,10 +589,24 @@ def extract(pdf_path=None, ocr_path=None, page_offset=0):
     else:
         doc = pymupdf.open(pdf_path)
         pages = [page_lines_pdf(doc[i]) for i in range(doc.page_count)]
+        if words_path:  # bad text layer: keep its layout, take the words from our own OCR
+            wpages = json.load(open(words_path))['pages']
+            pages = [(overlay_words(lines, wpages[i].get('words') or []), W, H) for i, (lines, W, H) in enumerate(pages)]
     body_size, levels = learn_styles(pages)
+    if not ocr_path and pdf_path:
+        chapters = chapter_bookmarks(pymupdf.open(pdf_path).get_toc())
+        if chapters:
+            # Chapters come from the PDF's bookmarks (chapter titles are often artwork); the
+            # headings found on the page nest one level below them.
+            toc = {}
+            for page, title in chapters:
+                toc.setdefault(page, []).append((1, title))
+            levels = {k: min(v + 1, 6) for k, v in levels.items()}
+    body_font = collections.Counter(s['font'] for lines, W, H in pages for l in lines for s in l['spans']).most_common(1)[0][0]
+    learn_lead_fonts(pages, body_font)
     if ocr_path:
         levels = {}  # OCR sizes are unreliable: headings come from bookmarks, or one section per page
         if not toc:
             toc = {i + 1: [(1, f'Page {i + 1}')] for i in range(len(pages))}
     stream = build_stream(pages, body_size, levels, page_offset, toc)
-    return stream, {'body_size': body_size, 'levels': {f'{k[0]}@{k[1]}': v for k, v in levels.items()}, 'pages': len(pages), 'toc_headings': bool(toc)}
+    return stream, {'lead_fonts': sorted(LEAD_FONTS), 'body_size': body_size, 'levels': {f'{k[0]}@{k[1]}': v for k, v in levels.items()}, 'pages': len(pages), 'toc_headings': bool(toc)}

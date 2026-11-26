@@ -1,7 +1,7 @@
 import MiniSearch from 'minisearch';
 import { SEARCH_OPTIONS } from './searchOptions.js';
 
-export type Category = 'spell' | 'power' | 'feat' | 'monster' | 'item' | 'class' | 'prestige' | 'race' | 'skill' | 'condition' | 'deity' | 'rule';
+export type Category = 'spell' | 'power' | 'feat' | 'monster' | 'item' | 'trap' | 'class' | 'prestige' | 'race' | 'skill' | 'condition' | 'deity' | 'rule';
 
 export interface Entry {
   i: string; // id: "<doc>/<anchor>"
@@ -34,6 +34,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   feat: 'Feat',
   monster: 'Monster',
   item: 'Magic item',
+  trap: 'Trap',
   class: 'Class',
   prestige: 'Prestige class',
   race: 'Race',

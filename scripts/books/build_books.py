@@ -75,7 +75,10 @@ def smart_title(t):
             elif i > 0 and w in SMALL:
                 out.append(w)
             else:
-                out.append(re.sub(r"(^|[-(/’'])([a-zà-ÿ])", lambda m: m.group(1) + m.group(2).upper(), w))
+                if '&' in w and len(w) <= 5:
+                    out.append(w.upper())  # D&D
+                    continue
+                out.append(re.sub(r"(^|[-(/])([a-zà-ÿ])", lambda m: m.group(1) + m.group(2).upper(), w))
         t = ' '.join(out)
     return t
 
@@ -116,15 +119,23 @@ def element_text(e):
 def detect_kind(title, own_text, child_titles):
     ct = ' | '.join(child_titles).lower()
     head = own_text[:1500]
-    if re.search(r'\[[A-Za-z ,]+\]\s*$', title) and not re.search(r'\[(Fire|Cold|Acid|Electricity|Sonic|Evil|Good|Law|Chaos|Force|Light|Darkness|Death|Fear|Mind-Affecting|Language-Dependent|Air|Earth|Water)\]', title):
+    if re.search(r'\bPrice[^:]{0,16}:\s*\+?[\d,]+\s*(gp|bonus)', head) and re.search(r'\b(Property|Body Slot|Caster Level|Aura):', head):
+        return 'item'  # incl. weapon/armor properties (“Acidic Burst [Synergy]”, Price: +1 bonus)
+    if re.search(r'\w.*\[[A-Za-z ,]+\]\s*$', title) and not re.search(r'\[(Fire|Cold|Acid|Electricity|Sonic|Evil|Good|Law|Chaos|Force|Light|Darkness|Death|Fear|Mind-Affecting|Language-Dependent|Air|Earth|Water)\]', title):
         return 'feat'
-    if re.search(r'\bLevel:\s', head) and re.search(r'\b(Components|Casting Time):', head):
+    if re.search(r'\bLevel:\s*[A-Z]', head) and re.search(r'\b(Components|Casting Time):', head):
         return 'spell'
+    if re.search(r'\bLevel:\s*[A-Z][A-Za-z/]{1,10} \d', head[:300]) and re.search(r'\b(Range|Duration|Saving Throw|Spell Resistance|Target|Area|Effect):', head):
+        return 'spell'  # “Mass”/“Greater” variants list only the lines that differ
+    if re.search(r'\bSpellcraft DC:\s*\d', head) and re.search(r'\b(Components|Casting Time):', head):
+        return 'spell'  # epic spells
     if re.search(r'\b(Discipline|Power Points):', head) and re.search(r'\bLevel:', head):
         return 'power'
     if re.search(r'\bHit Dice:\s', head) or (re.search(r'\bhp \d', head) and re.search(r'\bInit [+\-–]', head) and (re.search(r'\bCR \d', head) or re.search(r'\bCR \d', title))):
         return 'monster'
-    if ('requirements' in ct or 'entry requirements' in ct) and 'class features' in ct:
+    if re.search(r'(^|\s)Benefit:', head[:1200]) and not re.search(r'\bHit Dice:', head):
+        return 'feat'
+    if ('requirements' in ct or 'entry requirements' in ct) and ct.count('class features') == 1:
         return 'prestige'
     if 'class features' in ct and ('class skills' in ct or 'hit die' in head.lower()):
         return 'class'
@@ -180,10 +191,28 @@ def meta_for(kind, own_text, title):
 
 # ---------------------------------------------------------------------------- per book
 
+def merge_tag_headings(stream):
+    """“CLINGING BREATH” … caption … “[METABREATH]”: a heading that is only a feat tag belongs
+    to the name heading just before it (an illustration caption may sit in between)."""
+    for i, e in enumerate(stream):
+        if e['t'] != 'h' or not re.fullmatch(r'\[[A-Za-z ,\-]+\]', e['text'].strip()):
+            continue
+        for j in range(i - 1, max(-1, i - 4), -1):
+            x = stream[j]
+            if x['t'] == 'h':
+                if x['page'] == e['page'] and '[' not in x['text']:
+                    x['text'] = x['text'].rstrip() + ' ' + e['text'].strip()
+                    stream[i] = {'t': 'p', 'html': '', 'text': '', 'page': e['page']}
+                break
+            if x['t'] != 'p' or len(x['text']) > 160:
+                break
+
+
 def process_book(book_id, stream):
+    merge_tag_headings(stream)
     for e in stream:
         if e['t'] == 'h':
-            e['title'] = smart_title(e['text'])
+            e['title'] = re.sub(r'^New (Feat|Spell|Magic Item|Item|Monster|Prestige Class):\s*', '', smart_title(e['text']), flags=re.I)
     used = set()
     anchors = {}
     for i, e in enumerate(stream):
@@ -218,15 +247,15 @@ def process_book(book_id, stream):
         own_text = ' '.join(element_text(stream[j]) for j in range(i + 1, own_end))
         if not own_text.strip() and end == i + 1:
             continue  # empty heading
-        kind = detect_kind(e['title'], own_text, child_titles)
+        kind = detect_kind(e['title'], own_text, child_titles) if lvl > 1 else 'rule'  # chapters are sections
         summary = ''
         for j in range(i + 1, own_end):
-            if stream[j]['t'] == 'p' and len(stream[j]['text']) > 60 and not re.match(r'^[A-Z][A-Za-z ]+:', stream[j]['text']):
+            if stream[j]['t'] == 'p' and len(stream[j]['text']) > 60 and not re.match(r'^[A-Z][A-Za-z ()/]+:', stream[j]['text']) and not re.search(r'\b(Body Slot|Caster Level|Aura|Activation):', stream[j]['text'][:200]):
                 summary = stream[j]['text'][:200]
                 break
         title = e['title']
         meta = meta_for(kind, own_text, title)
-        if kind == 'feat':
+        if kind in ('feat', 'item'):
             title = re.sub(r'\s*\[[^\]]+\]\s*$', '', title)
         crm = re.search(r'\s+CR\s+([\d/]+)\s*$', title)
         if crm:
@@ -237,7 +266,169 @@ def process_book(book_id, stream):
             'kind': kind, 'level': lvl, 'parent': parent, 'path': ' › '.join(path[-3:]), 'page': e['page'],
             'start': i, 'end': end, 'summary': summary, 'meta': meta, 'text': own_text,
         })
+    mark_prestige_classes(stream, entries)
+    entries = add_run_in_entries(stream, blocks, entries, used)
     return blocks, entries
+
+
+RUN_IN = re.compile(r'^(?:<i>)?<b>\s*([^<]{2,70}?)\s*(?:</b>)?\s*(?:</i>)?\s*[:.]\s*(?:</b>)?|^(?:<i>)?<b>\s*([^<]{2,70}?)[:.]\s*</b>')
+NOT_NAMES = {x.lower() for x in STAT_LABELS} | {
+    'benefit', 'benefits', 'normal', 'special', 'prerequisite', 'prerequisites', 'requirements', 'cost', 'cost to create',
+    'faint', 'moderate', 'strong', 'overwhelming', 'market price', 'note', 'example', 'variant', 'combat', 'tactics',
+    'description', 'lore', 'activation', 'effect', 'trigger', 'reset', 'bypass', 'search', 'disable device', 'hp', 'ac',
+    'sq', 'sa', 'atk', 'full atk', 'spd', 'init', 'cr', 'possessions', 'languages', 'spells known', 'spells prepared',
+    'hook', 'construction', 'materials', 'focus', 'xp cost', 'material component', 'arcane focus', 'divine focus',
+    'level', 'school', 'class skills', 'skill points', 'hit die', 'weapon and armor proficiency', 'spells per day',
+}
+FEAT_LEAD = re.compile(r'^([A-Z][A-Za-z’\'\- ]{2,50}?)\s*\[([A-Z][A-Za-z ,\-]{2,40})\]\s')
+TRAP_RE = re.compile(r'\bCR \d+;\s*(mechanical|magic device|magical)', re.I)
+ITEM_RE = re.compile(r'\b(?:Market )?Price(?: \(Item Level\))?:?\s*\+?[\d,]+\s*gp|\bCL \d+(?:st|nd|rd|th)\b.{0,200}\bPrice\b', re.S)
+
+
+def run_in_kind(text):
+    head = text[:1500]
+    if TRAP_RE.search(head):
+        return 'trap'
+    if re.search(r'\bLevel:\s*[A-Z]', head) and re.search(r'\b(Components|Casting Time):', head):
+        return 'spell'
+    if re.search(r'(^|\s)Benefit:', head):
+        return 'feat'
+    if re.search(r'\bPortfolio:', head) and re.search(r'\b(Domains|Alignment):', head):
+        return 'deity'
+    if ITEM_RE.search(head):
+        return 'item'
+    if re.search(r'\bCR \d+;', head[:300]) and re.search(r'\bhp \d+', head) and re.search(r'\bAC \d+', head):
+        return 'monster'
+    return None
+
+
+def add_run_in_entries(stream, blocks, entries, used):
+    """Entries whose name is a bold lead-in at the start of a paragraph (“Amulet of Health:
+    This amulet…”, “Basic Arrow Trap: CR 1; mechanical…”). A run of such paragraphs under a
+    heading becomes one entry per name when its text carries a stat marker (price, Benefit,
+    spell stats, trap or monster stats).
+    """
+    heads = [i for i, e in enumerate(stream) if e['t'] == 'h']
+    by_start = {e['start']: e for e in entries}
+    out = []
+    bounds = heads + [len(stream)]
+    for k, h in enumerate(heads):
+        parent = by_start.get(h)
+        region_end = bounds[k + 1]
+        leads = []
+        for j in range(h + 1, region_end):
+            e = stream[j]
+            if e['t'] != 'p':
+                continue
+            m = RUN_IN.match(e['html'])
+            fm = None if m else FEAT_LEAD.match(e['text'])
+            if not m and not fm:
+                continue
+            if fm:
+                name = fm.group(1).strip()
+                if len(name.split()) > 6:
+                    continue
+                leads.append((j, name + ' [' + fm.group(2) + ']'))
+                continue
+            name = re.sub(r'\s+', ' ', (m.group(1) or m.group(2) or '')).strip().rstrip(':.').strip()
+            words = name.split()
+            if not words or len(words) > 9 or not name[:1].isupper() or name.lower() in NOT_NAMES:
+                continue
+            if re.match(r'^[\d(+–\-]', name) or re.search(r'\b(Ex|Su|Sp)\)?$', name):
+                continue  # “+2:”, special abilities “(Ex)”
+            leads.append((j, name))
+        if len(leads) < 1 or parent is None:
+            continue
+        made = []
+        for n, (j, name) in enumerate(leads):
+            end = leads[n + 1][0] if n + 1 < len(leads) else region_end
+            text = ' '.join(element_text(stream[x]) for x in range(j, end))
+            kind = run_in_kind(text)
+            if not kind:
+                continue
+            made.append((j, end, name, kind, text))
+        # A single marker that is already the heading's own entry (e.g. one feat under its own
+        # heading) needs no sub-entry.
+        if len(made) == 1 and parent['kind'] == made[0][3]:
+            continue
+        for j, end, name, kind, text in made:
+            tagged = name
+            name = re.sub(r'\s*\[[^\]]+\]$', '', name)
+            title = smart_title(name)
+            a = slug(title); base = a; c = 2
+            while a in used:
+                a = f'{base}-{c}'; c += 1
+            used.add(a)
+            blocks[j] = blocks[j].replace('<p>', f'<p id="{a}">', 1)
+            body = re.sub(r'^\s*' + re.escape(name) + r'\s*(\[[^\]]+\])?\s*[:.]?\s*', '', text)
+            meta = meta_for(kind if kind != 'trap' else 'item', text, smart_title(tagged))
+            if kind == 'trap':
+                cr = re.search(r'\bCR (\d+)', text)
+                meta = {'cr': cr.group(1)} if cr else {}
+            path = (parent['path'] + ' › ' if parent['path'] else '') + parent['title']
+            out.append({
+                'book': parent['book'], 'anchor': a, 'title': title, 'kind': kind, 'level': parent['level'] + 1,
+                'parent': parent['title'], 'path': ' › '.join(path.split(' › ')[-3:]), 'page': stream[j]['page'],
+                'start': j, 'end': end, 'summary': body[:200], 'meta': meta, 'text': text,
+            })
+        if made and parent['kind'] in ('item', 'feat', 'spell', 'trap', 'monster') and len(made) > 1:
+            parent['kind'] = 'rule'  # a container of many entries, not an entry itself
+    return sorted(entries + out, key=lambda e: e['start'])
+
+
+def _norm(t):
+    import unicodedata
+    t = unicodedata.normalize('NFKD', t.replace('ı', 'i')).encode('ascii', 'ignore').decode()
+    return re.sub(r'[^a-z]', '', t.lower())
+
+
+QUALIFY = re.compile(r'To qualify to become (?:an? |the )?(.{3,70}?),?\s+(?:an? )?(?:character|creature|candidate|dragon)\b')
+
+
+def mark_prestige_classes(stream, entries):
+    """“To qualify to become a dark hunter, a character must…” names the prestige class.
+
+    The class's heading is the nearest earlier entry with that name (or the next one, when
+    an OCR bookmark landed a little early). In some books its Requirements / Class Skills /
+    Class Features headings are children; in others (DMG) they are siblings at the same
+    level, so the class entry is extended to cover them.
+    """
+    def same(title, name):
+        t = _norm(re.sub(r'\s*\(.*\)$', '', title))
+        if not t:
+            return False
+        return t == name or t + 's' == name or t == name + 's' or (len(t) >= 5 and (name.startswith(t) or t.startswith(name)))
+
+    targets = []
+    for k, ent in enumerate(entries):
+        for m in QUALIFY.finditer(ent['text']):
+            raw = re.sub(r'\([^)]*\)', '', m.group(1))
+            raw = re.sub(r'\s+of a particular (deity|god|faith)$', '', raw.strip())
+            name = _norm(raw)
+            if len(name) < 4:
+                continue
+            order = list(range(k, max(-1, k - 15), -1)) + list(range(k + 1, min(len(entries), k + 3)))
+            for j in order:
+                if same(entries[j]['title'], name):
+                    targets.append(j)
+                    break
+    targets = sorted(set(targets))
+    starts = {entries[j]['start'] for j in targets}
+    for j in targets:
+        e = entries[j]
+        e['kind'] = 'prestige'
+        e['meta'] = {}
+        lvl = e['level']
+        end = len(stream)
+        for x in range(e['start'] + 1, len(stream)):
+            if stream[x]['t'] == 'h' and (stream[x]['level'] < lvl or x in starts or
+                                          (stream[x]['level'] == lvl and re.match(r'(?i)^(chapter|appendix|table of contents|index)\b', stream[x]['title']))):
+                end = x
+                break
+        e['end'] = max(e['end'], end)
+        hd = re.search(r'\bHit Die:\s*(d\d+)', ' '.join(element_text(stream[x]) for x in range(e['start'], min(e['end'], e['start'] + 80))))
+        if hd:
+            e['meta']['hd'] = hd.group(1)
 
 
 # ---------------------------------------------------------------------------- database
@@ -316,7 +507,16 @@ def main():
         if not os.path.exists(pdf):
             print(f'  ! missing {fname}, skipped'); continue
         t = time.time()
-        if os.path.exists(ocr):
+        cache_dir = os.path.join(BUILD, 'streams')
+        os.makedirs(cache_dir, exist_ok=True)
+        import hashlib
+        words = os.path.join(books_dir, 'ocr', fname.replace('.pdf', '.words.json'))
+        key = hashlib.sha1(open(os.path.join(os.path.dirname(__file__), 'extract.py'), 'rb').read() + str(os.path.getmtime(pdf)).encode()
+                           + (str(os.path.getmtime(words)).encode() if os.path.exists(words) else b'')).hexdigest()[:12]
+        cached = os.path.join(cache_dir, f'{bid}-{key}.json')
+        if os.path.exists(cached):
+            stream, info = json.load(open(cached))
+        elif os.path.exists(ocr):
             stream, info = extract(pdf_path=pdf, ocr_path=ocr)
         else:
             import pymupdf
@@ -324,7 +524,12 @@ def main():
             sample = range(min(20, doc.page_count - 1), min(doc.page_count, 60), 5)
             if sum(len(doc[i].get_text()) for i in sample) < 200 * len(sample):
                 print(f'  ! {bid}: scanned book without OCR cache yet ({fname}) — skipped'); continue
-            stream, info = extract(pdf_path=pdf)
+            stream, info = extract(pdf_path=pdf, words_path=words if os.path.exists(words) else None)
+        if not os.path.exists(cached):
+            for old in os.listdir(cache_dir):
+                if old.startswith(bid + '-'):
+                    os.remove(os.path.join(cache_dir, old))
+            json.dump([stream, info], open(cached, 'w'))
         blocks, entries = process_book(bid, stream)
         kinds = collections.Counter(e['kind'] for e in entries)
         chars = sum(len(e['text']) for e in entries)

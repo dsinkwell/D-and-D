@@ -529,6 +529,32 @@ select {
   margin-left: 8px;
 }
 
+.row-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.src-chip {
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.src-chip.srd {
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.pad {
+  padding: 8px 16px;
+}
+
 .row-sub {
   color: var(--muted);
   font-size: 14px;
@@ -619,9 +645,15 @@ mark {
   background: #ece3f3;
   color: #5b3a7c;
 }
-.cat-condition {
+.cat-condition,
+.cat-trap {
   background: #fde9d6;
   color: #9a4b08;
+}
+.cat-deity,
+.cat-rule {
+  background: #efe6d8;
+  color: #6b4b22;
 }
 .cat-wiki,
 .badge-wiki {
@@ -659,7 +691,8 @@ mark {
     background: #33264a;
     color: #d3b9f0;
   }
-  .cat-condition {
+  .cat-condition,
+  .cat-trap {
     background: #45290f;
     color: #f7bf89;
   }
