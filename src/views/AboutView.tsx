@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Header, Notice, useOnline } from '../components';
 import { formatBytes, storageEstimate } from '../lib/storage';
 import { OfflineDataCard } from '../OfflineData';
+import { runDiagnostics, type Check } from '../lib/diagnostics';
 import { AskModelSettings } from './AskView';
 import { clearSaved, countSaved, DEFAULT_WIKI, getWikiSettings, saveWikiSettings, searchWiki } from '../lib/wiki';
 
@@ -30,6 +31,8 @@ export default function AboutView() {
   return (
     <div className="page about">
       <Header title="About & Settings" back={false} />
+
+      <Diagnostics />
 
       <section className="card">
         <h2>Install on your devices</h2>
@@ -116,5 +119,49 @@ export default function AboutView() {
         </p>
       </section>
     </div>
+  );
+}
+
+function Diagnostics() {
+  const [checks, setChecks] = useState<Check[] | null>(null);
+  const [copied, setCopied] = useState(false);
+  const run = () => {
+    setChecks(null);
+    runDiagnostics().then(setChecks);
+  };
+  const text = () => (checks || []).map((c) => `${c.ok ? 'OK  ' : 'FAIL'} ${c.name}: ${c.detail}`).join('\n');
+  return (
+    <section className="card">
+      <h2>Diagnostics</h2>
+      {!checks ? (
+        <button className="btn" onClick={run}>
+          Run checks
+        </button>
+      ) : (
+        <>
+          <ul className="diag">
+            {checks.map((c) => (
+              <li key={c.name} className={c.ok ? 'ok' : 'fail'}>
+                <b>{c.ok ? '✓' : '✗'} {c.name}</b> <span className="muted">{c.detail}</span>
+              </li>
+            ))}
+          </ul>
+          <button
+            className="btn"
+            onClick={() =>
+              navigator.clipboard.writeText(text()).then(
+                () => (setCopied(true), setTimeout(() => setCopied(false), 2000)),
+                () => {},
+              )
+            }
+          >
+            {copied ? 'Copied' : 'Copy results'}
+          </button>{' '}
+          <button className="btn subtle" onClick={run}>
+            Run again
+          </button>
+        </>
+      )}
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon, Notice } from './components';
-import { DbName, installDb, InstallProgress, remoteManifest, RemoteManifest, removeDb, useDbStatus } from './lib/db';
+import { DbName, manifestError, installDb, InstallProgress, remoteManifest, RemoteManifest, removeDb, useDbStatus } from './lib/db';
 import { formatBytes } from './lib/storage';
 import { whileBusy } from './lib/busy';
 
@@ -76,6 +76,8 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
     );
   }
   if (remote === null && !installed) {
+    if (manifestError[name] && !/HTTP 404/.test(manifestError[name]!))
+      return <Notice kind="error">Couldn’t reach the {name === 'wiki' ? 'wiki' : 'books'} download: {manifestError[name]}</Notice>;
     return compact ? null : <p className="muted small">The offline {name === 'wiki' ? 'wiki' : 'books'} data hasn’t been published to this site yet.</p>;
   }
   if (compact && installed && !updateAvailable) return null;

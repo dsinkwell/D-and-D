@@ -2010,3 +2010,21 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
   color: var(--muted);
   margin: 0 0 6px;
 }
+
+.diag {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+  font-size: 14px;
+}
+.diag li {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.diag li.ok b {
+  color: #2d7a3a;
+}
+.diag li.fail b {
+  color: var(--accent);
+}

@@ -98,12 +98,21 @@ export interface RemoteManifest {
   [k: string]: unknown;
 }
 
+/** Why the last remoteManifest() call returned null (shown to the user). */
+export const manifestError: Partial<Record<DbName, string>> = {};
+
 export async function remoteManifest(name: DbName): Promise<RemoteManifest | null> {
+  const url = `${dataBase(name)}manifest.json`;
   try {
-    const r = await fetch(`${dataBase(name)}manifest.json`, { cache: 'no-store' });
-    if (!r.ok) return null;
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) {
+      manifestError[name] = `HTTP ${r.status} from ${url}`;
+      return null;
+    }
+    delete manifestError[name];
     return await r.json();
-  } catch {
+  } catch (e) {
+    manifestError[name] = `${String((e as Error)?.message || e)} (${url})`;
     return null;
   }
 }
