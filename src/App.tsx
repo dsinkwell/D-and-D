@@ -13,6 +13,7 @@ import { BookEntryView, BookTocView } from './views/BookViews';
 import SavedView from './views/SavedView';
 import AboutView from './views/AboutView';
 import AskView from './views/AskView';
+import DiceTray from './DiceTray';
 
 const TABS = [
   { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') || p.startsWith('/ask') },
@@ -101,6 +102,7 @@ export default function App() {
       <main className="main" key={section || 'search'}>
         {view}
       </main>
+      <DiceTray />
       <nav className="tabbar" aria-label="Tabs">
         {TABS.map((t) => (
           <a key={t.id} href={t.href} className={`tab ${t.match(route.path) ? 'active' : ''}`}>

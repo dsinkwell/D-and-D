@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { catalog, catalogGeneration, nameKey } from './catalog';
 import { Category } from './srd';
+import { withRollers } from './rollers';
 
 type LinkKind = 'spell' | 'feat' | 'skill' | 'condition' | 'item';
 
@@ -297,7 +298,7 @@ export function autolink(html: string, idx: LinkIndex, opts: AutolinkOptions = {
   return root.innerHTML;
 }
 
-/** React hook: `html` with rules links added once the link index is ready (plain until then). */
+/** React hook: `html` with roll markers, and rules links once the link index is ready. */
 export function useAutolinked(html: string, opts: AutolinkOptions = {}): string {
   const [idx, setIdx] = useState<LinkIndex | null>(null);
   useEffect(() => {
@@ -310,12 +311,19 @@ export function useAutolinked(html: string, opts: AutolinkOptions = {}): string 
     };
   }, []);
   return useMemo(() => {
-    if (!idx || !html) return html;
+    if (!html) return html;
+    let out = html;
     try {
-      return autolink(html, idx, opts);
+      if (idx) out = autolink(html, idx, opts);
     } catch {
-      return html;
+      /* keep the plain text */
     }
+    try {
+      out = withRollers(out);
+    } catch {
+      /* no roll markers */
+    }
+    return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html, idx, opts.selfHref, opts.selfTitle]);
 }
