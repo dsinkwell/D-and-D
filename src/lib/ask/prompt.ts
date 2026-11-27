@@ -1,10 +1,11 @@
 // The prompt for written answers: the Ask search's exact answer (if any) and best passages,
 // trimmed to the sentences around the match, plus instructions. Used by the native app's
 // written answers (Apple's on-device model or a downloaded open model).
-import { ask, type Passage } from './engine';
+import { ask, namedIn, passageAt, type Passage } from './engine';
 import { directAnswer, type Direct } from './direct';
 import { highlight, keyTerms, termsIn, textOf } from './highlight';
 import { query } from '../db';
+import { catalog, nameKey } from '../catalog';
 
 export const INSTRUCTIONS = [
   'You answer questions about the Dungeons & Dragons 3.5 rules and the Forgotten Realms, using only the sources you are given.',
@@ -90,6 +91,54 @@ export function selectSources(q: string, passages: Passage[], max = 3, about?: s
   return out;
 }
 
+// ------------------------------------------------------------------ cross-references
+
+// "This spell functions like dispel magic, except…", "…as the invisibility spell…",
+// "(see Arcane Spell Failure, page 122)": the deciding rule is in the section referred to.
+const REF_PATTERNS: { rx: RegExp; always: boolean; spell?: boolean }[] = [
+  { rx: /\bfunctions? (?:like|as) (?:the )?([a-z][a-z’' ,/-]{2,40}?)\s*(?=,|\.|;| except| but| spell\b)/gi, always: true, spell: true },
+  // Complete Arcane & co.: "As resist energy, except that it affects all targeted creatures."
+  { rx: /(?:^|[.:)]\s+)As ([a-z][a-z’' /-]{2,40}?)\s*,? except\b/gm, always: true, spell: true },
+  { rx: /\bas (?:the |an? )?([a-z][a-z’' /-]{2,40}?) spell\b/gi, always: false, spell: true },
+  { rx: /\(?\bsee (?:the )?([A-Z][A-Za-z’' -]{2,40}?)(?:,? (?:on )?(?:page|p\.) ?\d+)?(?=[).,;])/g, always: false },
+];
+
+/**
+ * Sections the chosen sources refer to, as extra sources for the model. A "functions like X"
+ * reference is always followed (the source is only the differences); a "see X" one only when X
+ * shares two key words with the question.
+ */
+export async function crossReferences(q: string, sources: Passage[], max: number): Promise<{ ref: Passage; from: Passage }[]> {
+  if (max <= 0) return [];
+  const out: { ref: Passage; from: Passage }[] = [];
+  const have = new Set(sources.map((p) => norm(p.title)));
+  const terms = keyTerms(q);
+  for (const from of sources) {
+    const text = textOf(from.html);
+    for (const { rx, always, spell } of REF_PATTERNS) {
+      rx.lastIndex = 0;
+      for (let m = rx.exec(text); m && out.length < max; m = rx.exec(text)) {
+        const phrase = m[1].trim();
+        // "functions like invisibility" in a spell means the spell, not the Invisibility rules section
+        const sp = spell ? (await catalog('spell').catch(() => [])).find((it) => nameKey(it.title) === nameKey(phrase)) : undefined;
+        const hit = sp
+          ? { title: sp.title, href: sp.sources[0].href }
+          : (await namedIn(phrase)).find((n) => norm(n.title) === norm(phrase) || norm(n.title).replace(/^(.+) (greater|lesser|mass)$/, '$2 $1') === norm(phrase));
+        if (!hit || have.has(norm(hit.title)) || norm(hit.title) === norm(from.title)) continue;
+        const key = hit.href.startsWith('#/srd/') ? `srdh:${hit.href}` : `bkh:${hit.href}`;
+        const ref = await passageAt(hit.href, key).catch(() => null);
+        if (!ref) continue;
+        // a "see X" aside is followed only when X is about the question (two of its key words)
+        if (!always && termsIn(textOf(ref.html) + ' ' + ref.title, terms).length < Math.min(2, terms.length)) continue;
+        have.add(norm(hit.title));
+        out.push({ ref, from });
+      }
+    }
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /** Build the prompt from results already found (no second search). */
 export async function promptFrom(q: string, direct: Direct | null, passages: Passage[], nSources = 3, excerpt = 900, searchMs = 0): Promise<BuiltPrompt> {
   const sources = selectSources(q, passages, nSources, direct?.title);
@@ -108,7 +157,13 @@ export async function promptFrom(q: string, direct: Direct | null, passages: Pas
     const ex = textOf(highlight(p.html, q, i === 0 ? excerpt : Math.round(excerpt / 2), p.title, true).excerpt.replace(/<\/?mark>/g, ''));
     lines.push(`[${p.label}] ${p.title}: ${ex}`);
   });
-  return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`, sources, searchMs };
+  // sections the sources refer to (Apple's model: up to 2; the small open models: 1)
+  const refs = await crossReferences(q, sources, nSources >= 3 ? 2 : 1).catch(() => []);
+  for (const { ref, from } of refs) {
+    const ex = textOf(highlight(ref.html, q, Math.round(excerpt / 2), ref.title, true).excerpt.replace(/<\/?mark>/g, ''));
+    lines.push(`[${ref.label}] ${ref.title} (referred to by ${from.title}): ${ex}`);
+  }
+  return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`, sources: [...sources, ...refs.map((r) => r.ref)], searchMs };
 }
 
 export async function buildPrompt(q: string, nSources = 3, excerpt = 900): Promise<BuiltPrompt> {

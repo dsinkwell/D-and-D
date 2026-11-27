@@ -101,9 +101,12 @@ export function highlight(html: string, q: string, size = 360, title = '', lead 
   let head = '';
   if (lead && lo > 0) {
     // the best of the opening sentences (the first one is sometimes scene-setting)
+    // (stat lines such as "Components: V, S" and the heading don't count)
     let first = -1;
-    for (let i = 0; i < Math.min(3, lo); i++) {
-      if (sents[i].length <= 40 || !/[.!?]$/.test(sents[i])) continue;
+    let seen = 0;
+    for (let i = 0; i < lo && seen < 3; i++) {
+      if (sents[i].length <= 40 || !/[.!?]$/.test(sents[i]) || /^[A-Z][\w ’'/()-]{1,28}:\s/.test(sents[i])) continue;
+      seen++;
       if (first < 0 || scoreOf(sents[i]) > scoreOf(sents[first])) first = i;
     }
     if (first >= 0 && first < lo) head = `${esc(sents[first].length > 300 ? sents[first].slice(0, 300) + '…' : sents[first])} ${first + 1 < lo ? '… ' : ''}`;

@@ -315,7 +315,7 @@ export async function ask(q: string, limit = 8): Promise<AskResult> {
 }
 
 /** Passage for an SRD or book entry link (its opening blocks). */
-async function passageAt(href: string, key: string): Promise<Passage | null> {
+export async function passageAt(href: string, key: string): Promise<Passage | null> {
   if (href.startsWith('#/srd/e/')) {
     const e = await getEntry(href.replace(/^#\/srd\/e\//, ''));
     if (!e) return null;
@@ -345,7 +345,7 @@ const NAME_KINDS: Category[] = ['skill', 'condition', 'rule', 'feat', 'spell', '
 // question words that say what kind of thing is asked about, not which one
 const ASK_FILLER = new Set(['feat', 'feats', 'skill', 'skills', 'spell', 'spells', 'condition', 'class', 'prestige', 'use', 'used', 'give', 'gives', 'work', 'works', 'does', 'mean', 'means', 'explain']);
 // names too general to mean "this entry" when they turn up in a question
-const GENERIC_NAMES = new Set(['attack', 'attacks', 'spell', 'spells', 'feat', 'feats', 'skill', 'skills', 'magic', 'combat', 'actions', 'damage', 'movement', 'hit points', 'character', 'characters', 'class', 'classes', 'monsters', 'items', 'equipment', 'weapons', 'level', 'cast', 'casting']);
+const GENERIC_NAMES = new Set(['greater', 'lesser', 'mass', 'improved', 'attack', 'attacks', 'spell', 'spells', 'feat', 'feats', 'skill', 'skills', 'magic', 'combat', 'actions', 'damage', 'movement', 'hit points', 'character', 'characters', 'class', 'classes', 'monsters', 'items', 'equipment', 'weapons', 'level', 'cast', 'casting']);
 let namesP: Promise<Map<string, Named>> | null = null;
 let namesGen = -1;
 
@@ -355,8 +355,10 @@ function nameMap(): Promise<Map<string, Named>> {
   namesP ??= (async () => {
     const map = new Map<string, Named>();
     const put = (title: string, kind: string, href: string) => {
-      const k = norm(title.replace(/\s*\[[^\]]*\]\s*$/, ''));
-      if (k.length >= 3 && !map.has(k) && !GENERIC_NAMES.has(k)) map.set(k, { title, kind, href });
+      const plain = title.replace(/\s*\[[^\]]*\]\s*$/, '');
+      // "Resist Energy, Mass" is asked about as "mass resist energy"
+      const m = plain.match(/^(.+?),\s*(greater|lesser|mass|improved|superior|swift|quickened)$/i);
+      for (const k of [norm(plain), ...(m ? [norm(`${m[2]} ${m[1]}`)] : [])]) if (k.length >= 3 && !map.has(k) && !GENERIC_NAMES.has(k)) map.set(k, { title, kind, href });
     };
     for (const kind of NAME_KINDS) {
       // SRD rules sections ("Flanking", "Spell Resistance", "Aid Another")

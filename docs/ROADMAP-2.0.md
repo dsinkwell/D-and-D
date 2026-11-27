@@ -32,6 +32,10 @@ The original brainstorm is kept below the decisions.
   command line). 59 questions, 17 of them held out (written after tuning). Search levels: 52/66 at the
   start → 93/96. Held-out set before fixes: 21/30. Known gap: weapon/armor table lookups (cost of full
   plate, longbow range increment) need a table-aware direct answer.
+- Done: cross-reference following (`crossReferences` in `src/lib/ask/prompt.ts`): "functions like X" /
+  "As X, except" (always, looked up as a spell) and "see X" (only when X shares two key words with the
+  question) add X as an extra source (Apple: up to 2, open models: 1). 4 cross-reference questions added;
+  whole set 101/104 on search levels.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).
 - Testing books locally: unlock them in a Playwright profile with the passphrase from the user (never commit it).
 

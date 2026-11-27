@@ -298,4 +298,11 @@ export const QUESTIONS: QualityQuestion[] = [
   { id: 'harper-scout', q: 'What are the requirements for the Harper Scout prestige class?', topic: 'realms', needs: ['books'], sources: ['Harper Scout'], prompt: ['harpers'], answer: ['harper'] },
   { id: 'improved-trip', q: 'What does Improved Trip do?', topic: 'feat', sources: ['Improved Trip'], prompt: ['attack of opportunity|free melee attack|immediately make a melee attack'], answer: ['attack'] },
   { id: 'aid-another', q: 'How does aid another work?', topic: 'combat', sources: ['Aid Another'], prompt: ['AC 10|DC 10'], answer: ['\\+2', '10'] },
+
+  // ---------------------------------------------------------------- cross-references: the source
+  // says "functions like X" / "see X", and the deciding rule is in X
+  { id: 'greater-dispel', q: 'How does greater dispel magic work?', topic: 'spell', sources: ['Greater Dispel Magic', 'Dispel Magic, Greater'], prompt: ['\\+20', 'dispel check'], answer: ['20', 'dispel check|caster level'] },
+  { id: 'greater-invisibility', q: 'What does greater invisibility do?', topic: 'spell', sources: ['Greater Invisibility', 'Invisibility, Greater'], prompt: ['attack', 'invisible'], answer: ['attack'] },
+  { id: 'mass-bulls-strength', q: "What does mass bull's strength do?", topic: 'spell', sources: ["Mass Bull's Strength", "Bull's Strength, Mass"], prompt: ['\\+4 enhancement bonus to strength|enhancement bonus to strength'], answer: ['\\+4'] },
+  { id: 'resist-energy-mass', q: 'How does mass resist energy work?', topic: 'spell', needs: ['books'], sources: ['Mass Resist Energy', 'Resist Energy, Mass'], prompt: ['resist energy', 'resistance (10|to energy)|energy resistance'], answer: ['resist'] },
 ];
