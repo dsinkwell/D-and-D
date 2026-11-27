@@ -278,6 +278,7 @@ function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; foun
   const [state, setState] = useState<'idle' | 'writing' | 'done' | 'error'>('idle');
   const [text, setText] = useState('');
   const [sources, setSources] = useState<Passage[]>([]);
+  const [given, setGiven] = useState('');
   const [info, setInfo] = useState<Written | null>(null);
   const [err, setErr] = useState('');
   const started = useRef(false);
@@ -293,7 +294,7 @@ function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; foun
     setText('');
     setErr('');
     try {
-      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => setSources(b.sources), found.passages.length ? found : undefined, engine));
+      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => (setSources(b.sources), setGiven(b.prompt)), found.passages.length ? found : undefined, engine));
       setText(w.text);
       setInfo(w);
       setState('done');
@@ -323,6 +324,12 @@ function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; foun
           ))}
           {info && <span className="muted"> · {(info.totalMs / 1000).toFixed(1)} s</span>}
         </p>
+      )}
+      {given && (
+        <details className="ask-given">
+          <summary>What the model was given</summary>
+          <pre>{given}</pre>
+        </details>
       )}
       {state !== 'writing' && (
         <button className="btn subtle" onClick={go}>

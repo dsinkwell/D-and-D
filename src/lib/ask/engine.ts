@@ -18,7 +18,8 @@ export interface Passage {
   label: string; // "PHB p. 232", "SRD", "Wiki"
   href: string;
   html: string; // passage HTML (may be long)
-  score: number;
+  score: number; // fused rank score (meaning + keyword)
+  sim?: number; // meaning similarity to the question (cosine), when found by meaning search
 }
 
 const base = import.meta.env.BASE_URL;
@@ -300,6 +301,7 @@ export async function ask(q: string, limit = 8): Promise<AskResult> {
     const tk = `${p.source}:${p.title.toLowerCase()}`;
     if (titles.has(tk)) continue;
     titles.add(tk);
+    if (p.score > 0) p.sim = p.score; // meaning-search passages arrive with their cosine similarity
     p.score = v.score;
     out.push(p);
     if (out.length >= limit) break;

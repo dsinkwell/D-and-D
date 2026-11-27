@@ -2081,3 +2081,18 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
   display: block;
   margin: 8px 0;
 }
+
+.ask-given {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0 6px;
+}
+.ask-given pre {
+  white-space: pre-wrap;
+  font: 12px/1.45 ui-monospace, Menlo, monospace;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
