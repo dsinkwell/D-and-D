@@ -1,0 +1,48 @@
+# Reports what App Store Connect says about the app's recent builds and TestFlight groups
+# (processing state, TestFlight state, groups). Prints no keys, emails or tester names.
+# Run from Actions → "iOS app status" → Run workflow.
+name: iOS app status
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install pyjwt cryptography requests >/dev/null
+      - name: Ask App Store Connect
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        shell: python
+        run: |
+          import os, time, jwt, requests
+          tok = jwt.encode({'iss': os.environ['ASC_ISSUER_ID'], 'iat': int(time.time()), 'exp': int(time.time()) + 600, 'aud': 'appstoreconnect-v1'},
+                           os.environ['ASC_KEY_P8'], algorithm='ES256', headers={'kid': os.environ['ASC_KEY_ID'], 'typ': 'JWT'})
+          H = {'Authorization': f'Bearer {tok}'}
+          def get(path, **params):
+              r = requests.get('https://api.appstoreconnect.apple.com' + path, headers=H, params=params)
+              if not r.ok:
+                  print('ERROR', r.status_code, path, r.text[:300]); return []
+              return r.json().get('data', [])
+          apps = get('/v1/apps', **{'filter[bundleId]': 'io.github.dsinkwell.frreference'})
+          if not apps:
+              print('No app record found for io.github.dsinkwell.frreference'); raise SystemExit
+          app = apps[0]; print('App:', app['attributes']['name'], '| id', app['id'])
+          for b in get('/v1/builds', **{'filter[app]': app['id'], 'sort': '-uploadedDate', 'limit': 5}):
+              a = b['attributes']
+              d = get(f"/v1/builds/{b['id']}/buildBetaDetail")
+              d = d if isinstance(d, dict) else {}
+              da = d.get('attributes', {})
+              print(f"Build {a.get('version')}: uploaded {a.get('uploadedDate')} | processing {a.get('processingState')} | expired {a.get('expired')} "
+                    f"| uses non-exempt encryption {a.get('usesNonExemptEncryption')} | TestFlight internal {da.get('internalBuildState')} external {da.get('externalBuildState')}")
+              groups = get(f"/v1/builds/{b['id']}/betaGroups")
+              print('   in groups:', ', '.join(g['attributes']['name'] for g in groups) or 'none')
+          for g in get('/v1/betaGroups', **{'filter[app]': app['id']}):
+              ga = g['attributes']
+              print(f"Group '{ga['name']}': internal {ga.get('isInternalGroup')} | gets all builds automatically {ga.get('hasAccessToAllBuilds')}")
