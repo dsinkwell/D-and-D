@@ -37,6 +37,11 @@ MIC and MM2u were flattened into text by the first extraction, so Ask's table an
   column). Bookmark placement: a heading line that starts with a short title matches it.
 - Checked on the PHB: Combat Casting, Craft Rod, Craft Staff, Dodge, Run and Track now carry their own text.
 
+**Note:** at 23:00 UTC the owner's own session had finished the downloads and OCR and started the build
+(step 4 below) in its container. If that session survives, it commits the rebuilt pack to `v2` itself
+(commit message starting "Books: rebuilt pack"). **Check `git log origin/v2` first**; if that commit is
+there, skip to step 5 (verify) — otherwise start from step 1.
+
 **Not done — the remaining steps, in order:**
 
 1. **Tools** (cloud container): `npm ci --onnxruntime-node-install-cuda=skip`,
