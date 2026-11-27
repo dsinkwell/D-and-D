@@ -69,7 +69,7 @@ The original brainstorm is kept below the decisions.
   someone else are marked imported (homebrew read-only, "from Dana"). Tested DM → player → updated rules.
   Not yet: opening a .frref.json straight from AirDrop/Files into the native app (needs a document type in
   Info.plist + handling the open-URL event); the share sheet inside the native app is untested.
-- Built, not yet on a device (step 4): iCloud sync (native app). `ios/App/App/CloudSyncPlugin.swift` (iCloud
+- Done (step 4, build 22; user confirmed sync between iPhone and iPad, 27 Nov): iCloud sync (native app). `ios/App/App/CloudSyncPlugin.swift` (iCloud
   key-value storage, entitlement in `ios/App/App/App.entitlements`; the iOS workflow ad-hoc-signs the unsigned
   archive with it before the export re-signs for distribution), `src/lib/cloud.ts` (one key per record,
   last change wins, tombstones; bookmarks, Jump to, house-rules switch and sharing name as small documents),
