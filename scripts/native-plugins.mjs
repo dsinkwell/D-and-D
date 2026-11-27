@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const file = join(ROOT, 'ios', 'App', 'App', 'capacitor.config.json');
 const cfg = JSON.parse(readFileSync(file, 'utf8'));
-const own = ['WriterPlugin'];
+const own = ['WriterPlugin', 'LocalWriterPlugin'];
 cfg.packageClassList = [...new Set([...(cfg.packageClassList || []), ...own])];
 writeFileSync(file, JSON.stringify(cfg, null, '\t') + '\n');
 console.log('native plugins listed:', cfg.packageClassList.join(', '));
