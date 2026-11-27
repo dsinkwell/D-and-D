@@ -118,19 +118,24 @@ export default function LabView() {
   const device = force || (dev?.webgpu ? 'webgpu' : 'wasm');
   const dtype = device === 'webgpu' && dev?.f16 ? 'q4f16' : 'q4';
 
-  const load = async () => {
+  const load = async (): Promise<boolean> => {
     setErr(null);
     setLoading(0);
+    let ok = false;
     try {
       const r = await call<{ loadMs: number; warmMs: number }>({ op: 'load', model: choice, dtype, device }, (m) => {
         if (m.progress?.total) setLoading(m.progress.loaded / m.progress.total);
       });
       setLoaded({ id: choice, dtype, device, ...r });
+      ok = true;
     } catch (e) {
       setErr(String((e as Error).message || e));
     }
     setLoading(null);
+    return ok;
   };
+  // typing and tapping Write works any time: load the chosen model first if none is ready
+  const ready = async () => !!loaded || (await load());
 
   const write = async (question: string) => {
     const run: Run = { n: ++runSeq, q: question, answer: '', searchMs: 0, sources: [] };
@@ -155,14 +160,15 @@ export default function LabView() {
   };
 
   const runOne = async () => {
-    if (!q.trim() || busy) return;
+    if (!q.trim() || busy || loading !== null) return;
     setBusy(true);
-    await write(q.trim());
+    if (await ready()) await write(q.trim());
     setBusy(false);
   };
   const runTest = async () => {
+    if (busy || loading !== null) return;
     setBusy(true);
-    for (const t of TEST_QUESTIONS) await write(t);
+    if (await ready()) for (const t of TEST_QUESTIONS) await write(t);
     setBusy(false);
   };
 
@@ -241,7 +247,7 @@ export default function LabView() {
             <span>{loading < 1 ? `Downloading ${Math.round(loading * 100)}% of ${model.mb} MB` : 'Preparing the model on the GPU…'}</span>
           </div>
         ) : (
-          <button className="btn primary" onClick={load} disabled={!dev || busy || loaded?.id === choice}>
+          <button className="btn primary" onClick={() => void load()} disabled={!dev || busy || loaded?.id === choice}>
             {loaded?.id === choice ? 'Loaded' : `Load ${model.name}`}
           </button>
         )}
@@ -255,6 +261,7 @@ export default function LabView() {
 
       <section className="card lab-card">
         <h2>2. Ask</h2>
+        {!loaded && <p className="muted">You can type now; Write loads the model picked above first.</p>}
         <form
           className="searchbar"
           onSubmit={(e) => {
@@ -262,12 +269,12 @@ export default function LabView() {
             runOne();
           }}
         >
-          <input type="search" placeholder="Ask a question…" value={q} onChange={(e) => setQ(e.target.value)} disabled={!loaded} />
-          <button className="btn primary ask-go" type="submit" disabled={!loaded || busy || !q.trim()}>
+          <input type="search" placeholder="Ask a question…" value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="go" />
+          <button className="btn primary ask-go" type="submit" disabled={busy || loading !== null || !q.trim()}>
             Write
           </button>
         </form>
-        <button className="btn" onClick={runTest} disabled={!loaded || busy}>
+        <button className="btn" onClick={runTest} disabled={busy || loading !== null}>
           Run the 5-question speed test
         </button>
       </section>
