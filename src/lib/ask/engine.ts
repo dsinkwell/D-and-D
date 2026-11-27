@@ -199,6 +199,8 @@ async function bookPassage(i: number, score: number): Promise<Passage | null> {
   bookShort ??= new Map((await listBuiltInBooks()).map((b) => [b.id, b.short]));
   // the matched chunk plus the rest of its section (the deciding sentence is often further on)
   const blocks = await blocksFor(e.book, r.start, Math.max(r.end, Math.min(e.end, r.start + 12)));
+  const twin = await srdTwinIfMisaligned(e.title, e.kind, blocks.join('\n'));
+  if (twin) return { ...twin, key: `bk:${e.id}:${r.start}`, score };
   return {
     key: `bk:${e.id}:${r.start}`,
     source: 'books',
@@ -335,8 +337,32 @@ export async function passageAt(href: string, key: string): Promise<Passage | nu
   if (!e) return null;
   bookShort ??= new Map((await listBuiltInBooks()).map((b) => [b.id, b.short]));
   const blocks = await blocksFor(e.book, e.start, Math.min(e.end, e.start + 12));
-  return { key, source: 'books', title: qualifiedTitle(e.title, e.parent), kind: e.kind, label: `${bookShort.get(e.book) || e.book} p. ${e.page}`, href, html: blocks.join('\n'), score: 0 };
+  const html = blocks.join('\n');
+  const twin = await srdTwinIfMisaligned(e.title, e.kind, html);
+  if (twin) return { ...twin, key };
+  return { key, source: 'books', title: qualifiedTitle(e.title, e.parent), kind: e.kind, label: `${bookShort.get(e.book) || e.book} p. ${e.page}`, href, html, score: 0 };
 }
+
+/**
+ * A few book entries carry the wrong text (the PHB's Dodge holds Craft Wondrous Item's Benefit:
+ * an extraction slip, to be fixed by re-extracting the PDFs). For a spell or feat that the SRD
+ * also has, a book copy that barely resembles the SRD's is replaced by the SRD's.
+ */
+async function srdTwinIfMisaligned(title: string, kind: string, html: string): Promise<Passage | null> {
+  if (kind !== 'spell' && kind !== 'feat') return null;
+  const e = (await loadEntries()).find((x) => x.c === kind && nameKeyOf(x.t) === nameKeyOf(title));
+  if (!e) return null;
+  const doc = await loadDoc(e.d);
+  const srdHtml = doc.blocks.slice(e.s, e.e).join('\n');
+  const words = (h: string) => new Set(textOf(h).toLowerCase().match(/[a-z]{4,}/g) || []);
+  const a = words(html);
+  const b = words(srdHtml);
+  let inter = 0;
+  for (const w of a) if (b.has(w)) inter++;
+  if (inter / Math.max(1, Math.min(a.size, b.size)) >= 0.35) return null;
+  return { key: '', source: 'srd', title: e.t, kind: e.c, label: 'SRD', href: entryHref(e), html: srdHtml, score: 0 };
+}
+const nameKeyOf = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // ------------------------------------------------------------------ names in the question
 

@@ -10,7 +10,7 @@ import { homebrewHref, homebrewHtml, homebrewIn } from '../homebrew';
 
 export const INSTRUCTIONS = [
   'You answer questions about the Dungeons & Dragons 3.5 rules and the Forgotten Realms, using only the sources you are given.',
-  'Answer the question directly in your first sentence (start with Yes or No if it is a yes/no question).',
+  'Answer the question directly in your first sentence.',
   'Then give the rule or fact that decides it, including any numbers, conditions or exceptions the sources state.',
   'Use only the sources that address the question and ignore the others. Do not add facts the question did not ask about.',
   'Write 2 to 4 plain sentences. Cite the source you used in brackets, like [PHB p. 57].',
@@ -141,6 +141,9 @@ export async function crossReferences(q: string, sources: Passage[], max: number
   return out;
 }
 
+/** "Can a wizard…", "Does a natural 20…", "Is flanking…" — not "Where is…", "How does…", "What does…". */
+export const isYesNo = (q: string) => /^\s*(can|could|does|do|did|is|are|was|were|will|would|should|shall|has|have|may|must)\b/i.test(q);
+
 /** Build the prompt from results already found (no second search). */
 export async function promptFrom(q: string, direct: Direct | null, passages: Passage[], nSources = 3, excerpt = 900, searchMs = 0): Promise<BuiltPrompt> {
   const sources = selectSources(q, passages, nSources, direct?.title);
@@ -172,7 +175,9 @@ export async function promptFrom(q: string, direct: Direct | null, passages: Pas
     const ex = textOf(highlight(ref.html, q, Math.round(excerpt / 2), ref.title, true).excerpt.replace(/<\/?mark>/g, ''));
     lines.push(`[${ref.label}] ${ref.title} (referred to by ${from.title}): ${ex}`);
   }
-  return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`, sources: [...sources, ...refs.map((r) => r.ref)], searchMs };
+  // only a yes/no question starts with Yes or No ("Where is Waterdeep?" got "Yes, Waterdeep is…")
+  const yesNo = isYesNo(q) ? '\n(This is a yes/no question: start your answer with Yes or No.)' : '';
+  return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}${yesNo}`, sources: [...sources, ...refs.map((r) => r.ref)], searchMs };
 }
 
 export async function buildPrompt(q: string, nSources = 3, excerpt = 900): Promise<BuiltPrompt> {

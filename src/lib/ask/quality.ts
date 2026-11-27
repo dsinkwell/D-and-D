@@ -5,10 +5,11 @@
 import { isInstalled } from '../db';
 import { ask } from './engine';
 import { directAnswer, listAnswer } from './direct';
-import { promptFrom } from './prompt';
+import { isYesNo, promptFrom } from './prompt';
 import { textOf } from './highlight';
 import { engineLabel, writeAnswer, type Engine } from './writer';
 import { QUESTIONS, type QualityQuestion } from './quality-questions';
+import { houseRulesOn, setHouseRulesOn } from '../homebrew';
 
 export type Level = 'direct' | 'list' | 'sources' | 'prompt' | 'answer';
 export const LEVELS: Level[] = ['direct', 'list', 'sources', 'prompt', 'answer'];
@@ -56,10 +57,17 @@ export async function runQuality(opts: RunOptions = {}): Promise<QResult[]> {
   const have = { books: await isInstalled('books').catch(() => false), wiki: await isInstalled('wiki').catch(() => false) };
   const qs = QUESTIONS.filter((x) => !opts.only || opts.only.includes(x.id));
   const out: QResult[] = [];
-  for (const item of qs) {
-    const r = await runOne(item, have, opts.engine || null);
-    out.push(r);
-    opts.onProgress?.(out.length, qs.length, r);
+  // the questions are about the printed rules: house rules (Stealth for Hide…) are off while it runs
+  const wasOn = houseRulesOn();
+  if (wasOn) setHouseRulesOn(false);
+  try {
+    for (const item of qs) {
+      const r = await runOne(item, have, opts.engine || null);
+      out.push(r);
+      opts.onProgress?.(out.length, qs.length, r);
+    }
+  } finally {
+    if (wasOn) setHouseRulesOn(true);
   }
   return out;
 }
@@ -116,7 +124,10 @@ async function runOne(item: QualityQuestion, have: { books: boolean; wiki: boole
         const w = await writeAnswer(item.q, () => {}, undefined, { direct: dir, passages: found.passages }, engine);
         res.answer = w.text.trim();
         const lacking = item.answer.filter((p) => !rx(p).test(res.answer!));
-        res.checks.push({ level: 'answer', ok: !lacking.length, detail: lacking.length ? `missing /${lacking.join('/, /')}/` : 'correct' });
+        // "Where is Waterdeep?" must not be answered "Yes, …"
+        const yesNoSlip = !isYesNo(item.q) && /^\W*(yes|no)\b/i.test(res.answer);
+        const why = [lacking.length && `missing /${lacking.join('/, /')}/`, yesNoSlip && 'starts with Yes/No but the question is not yes/no'].filter(Boolean).join('; ');
+        res.checks.push({ level: 'answer', ok: !why, detail: why || 'correct' });
       }
     }
   } catch (e) {
@@ -147,7 +158,7 @@ export function report(results: QResult[], engine?: Engine | null): string {
   const s = summarize(results);
   const lines = [
     `FR Reference — Ask quality test (${new Date().toISOString().slice(0, 16).replace('T', ' ')})`,
-    `Written answers: ${engine ? engineLabel(engine) : 'not tested'}`,
+    `Written answers: ${engine ? engineLabel(engine) : 'not tested'} · house rules off during the test`,
     `Overall: ${s.pass}/${s.total} checks passed${s.skipped ? `, ${s.skipped} questions skipped` : ''}`,
     ...s.levels.map((l) => `  ${LEVEL_LABEL[l.level]}: ${l.pass}/${l.total}`),
     '',

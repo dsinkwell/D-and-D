@@ -20,7 +20,10 @@ The original brainstorm is kept below the decisions.
      flattened into text** (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u). Needs the PDFs from the
      user's Drive (ask them to share the folder by link), table detection in `scripts/books/extract.py`, and a
      re-pack with the passphrase. Then re-run the Ask quality test and add table questions from those books.
-     Do this before 2.0 is called finished.
+     Do this before 2.0 is called finished. Same re-extraction must fix 4 PHB feats whose headings sit on the
+     wrong text (Combat Casting, Craft Rod, Craft Staff, Dodge — p. 92–94; found by the on-device quality test,
+     27 Nov; Ask already falls back to the SRD text for them, but their PHB pages still show the wrong text).
+   - On-device quality test, build 21, Apple Intelligence (27 Nov): 157/164, written answers 42/45.
 3. Character spellbooks / lists (**per character, with spells-per-day tracking**) and homebrew
    entries, on one shared saved-data format. Sharing by **file** (option A below).
 4. iCloud sync across each person's own devices (native app only; the web app keeps data per device).

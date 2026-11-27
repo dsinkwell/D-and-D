@@ -266,8 +266,8 @@ export const QUESTIONS: QualityQuestion[] = [
     topic: 'realms',
     needs: ['wiki'],
     sources: ['Waterdeep'],
-    prompt: ['sword coast'],
-    answer: ['sword coast'],
+    prompt: ['sword coast|the north'],
+    answer: ['sword coast|the north'],
   },
   {
     id: 'elminster',
