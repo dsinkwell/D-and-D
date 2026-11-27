@@ -37,8 +37,10 @@ export function selectSources(q: string, passages: Passage[], max = 3, about?: s
   // ("Elminster Enraged", a novel) are noise
   const subject = about ? norm(about) : '';
   for (const p of passages) {
-    const k = norm(p.title);
-    if (subject && k !== subject && k.startsWith(subject + ' ')) continue;
+    // the spell "Spell Resistance" and the rule "Spell Resistance" are different things
+    const k = `${norm(p.title)}|${p.kind === 'rule' || p.kind === 'wiki' ? p.kind : 'entry'}`;
+    const nt = norm(p.title);
+    if (subject && nt !== subject && nt.startsWith(subject + ' ')) continue;
     const cur = byTitle.get(k);
     if (!cur) {
       byTitle.set(k, p);
@@ -103,7 +105,7 @@ export async function promptFrom(q: string, direct: Direct | null, passages: Pas
   }
   sources.forEach((p, i) => {
     // the best match gets the most room: it usually holds the deciding sentence
-    const ex = textOf(highlight(p.html, q, i === 0 ? excerpt : Math.round(excerpt / 2), p.title).excerpt.replace(/<\/?mark>/g, ''));
+    const ex = textOf(highlight(p.html, q, i === 0 ? excerpt : Math.round(excerpt / 2), p.title, true).excerpt.replace(/<\/?mark>/g, ''));
     lines.push(`[${p.label}] ${p.title}: ${ex}`);
   });
   return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`, sources, searchMs };

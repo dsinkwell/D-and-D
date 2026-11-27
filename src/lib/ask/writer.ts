@@ -145,7 +145,10 @@ export async function writeAnswer(
 ): Promise<Written> {
   // small open models are easily led off by extra sources: give them at most 2 (Apple: 3)
   const n = engine.kind === 'local' ? 2 : 3;
-  const built = found ? await promptFrom(q, found.direct, found.passages, n) : await buildPrompt(q, n);
+  // Apple's model has room for longer excerpts (the deciding sentence of a long rule, e.g. the
+  // +2 on a charge, is often past the first 900 characters)
+  const excerpt = engine.kind === 'local' ? 900 : 1600;
+  const built = found ? await promptFrom(q, found.direct, found.passages, n, excerpt) : await buildPrompt(q, n, excerpt);
   onSources?.(built);
   const id = Math.random().toString(36).slice(2);
   const t0 = performance.now();

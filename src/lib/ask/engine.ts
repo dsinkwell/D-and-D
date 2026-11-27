@@ -1,8 +1,8 @@
 // Ask box engine: meaning search (ask.worker) + keyword search, merged, with passage text.
 import { booksReady, bookEntryHref, listBuiltInBooks, blocksFor } from '../books';
 import { isInstalled, query } from '../db';
-import { getEntry, loadDoc, entryHref, CATEGORY_LABEL, type Category } from '../srd';
-import { searchRules } from '../catalog';
+import { getEntry, loadDoc, loadEntries, entryHref, CATEGORY_LABEL, type Category } from '../srd';
+import { catalog, catalogGeneration, searchRules } from '../catalog';
 import { offlineSearch } from '../wikiOffline';
 import { wikiHref } from '../router';
 import { keywords, textOf } from './highlight';
@@ -180,11 +180,11 @@ async function srdPassage(i: number, score: number): Promise<Passage | null> {
   return {
     key: `srd:${e.i}:${r[1]}`,
     source: 'srd',
-    title: e.t,
+    title: qualifiedTitle(e.t, e.p),
     kind: e.c,
     label: 'SRD',
     href: entryHref(e),
-    html: doc.blocks.slice(r[1], r[2]).join('\n'),
+    html: doc.blocks.slice(r[1], Math.max(r[2], Math.min(e.e, r[1] + 12))).join('\n'),
     score,
   };
 }
@@ -192,15 +192,16 @@ async function srdPassage(i: number, score: number): Promise<Passage | null> {
 async function bookPassage(i: number, score: number): Promise<Passage | null> {
   const r = refs.books?.[i];
   if (!r) return null;
-  const rows = await query<any>('books', 'SELECT id, book, anchor, title, kind, page FROM entries WHERE id = ?', [r.ref]);
+  const rows = await query<any>('books', 'SELECT id, book, anchor, title, kind, page, parent, "end" FROM entries WHERE id = ?', [r.ref]);
   const e = rows[0];
   if (!e) return null;
   bookShort ??= new Map((await listBuiltInBooks()).map((b) => [b.id, b.short]));
-  const blocks = await blocksFor(e.book, r.start, r.end);
+  // the matched chunk plus the rest of its section (the deciding sentence is often further on)
+  const blocks = await blocksFor(e.book, r.start, Math.max(r.end, Math.min(e.end, r.start + 12)));
   return {
     key: `bk:${e.id}:${r.start}`,
     source: 'books',
-    title: e.title,
+    title: qualifiedTitle(e.title, e.parent),
     kind: e.kind,
     label: `${bookShort.get(e.book) || e.book} p. ${e.page}`,
     href: bookEntryHref(e),
@@ -221,6 +222,16 @@ async function wikiById(id: number, score: number): Promise<Passage | null> {
   if (!a) return null;
   return { key: `wiki:${a.id}`, source: 'wiki', title: textOf(a.display || a.title), kind: 'wiki', label: 'Realms Wiki', href: wikiHref(a.title), html: `<p>${escapeHtml(a.summary || '')}</p>`, score };
 }
+
+// Section titles that say nothing on their own ("Requirements", "Class Features", "Benefit"):
+// the model is shown "Red Wizard: Requirements" so it knows what the passage is about.
+const GENERIC_TITLE = /^(requirements?|class features?|class skills|benefits?|special|normal|prerequisites?|description|combat|tactics|overview|introduction|ecology|society|game rule information|abilities|playing an? .*|.* characters?|table \d.*|advancement|sample .*|typical .*|notes?)$/i;
+
+export function qualifiedTitle(title: string, parent?: string | null): string {
+  if (!parent || !GENERIC_TITLE.test(title.trim()) || norm(parent) === norm(title)) return title;
+  return `${parent.replace(/^chapter \d+:\s*/i, '')}: ${title}`;
+}
+const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -262,29 +273,23 @@ export async function ask(q: string, limit = 8): Promise<AskResult> {
     const make = h.source === 'srd' ? () => srdPassage(h.i, h.score) : h.source === 'books' ? () => bookPassage(h.i, h.score) : () => wikiPassage(h.i, h.score);
     add(ent, rank, make, 1.2);
   });
-  // keyword hits: rules & books catalog rows, wiki articles
+  // keyword hits: rules & books catalog rows
   kw.forEach((it, rank) => {
-    const src = it.sources[0];
-    const m = src.href.match(/^#\/book\/([^/]+)\/(.+)$/);
-    const key = src.srd ? `srdh:${src.href}` : `bkh:${src.href}`;
-    // map onto the meaning key when the same entry already came from meaning search
-    const existing = [...fused.keys()].find((k) => k === key);
-    add(existing || key, rank, async () => {
-      if (src.srd) {
-        const id = src.href.replace(/^#\/srd\/e\//, '');
-        const e = await getEntry(id);
-        if (!e) return null;
-        const doc = await loadDoc(e.d);
-        return { key, source: 'srd', title: e.t, kind: e.c, label: 'SRD', href: src.href, html: doc.blocks.slice(e.s, Math.min(e.e, e.s + 12)).join('\n'), score: 0 };
-      }
-      if (!m) return null;
-      const rows = await query<any>('books', 'SELECT id, book, anchor, title, kind, page, start, "end" FROM entries WHERE book = ? AND anchor = ?', [m[1], decodeURIComponent(m[2])]);
-      const e = rows[0];
-      if (!e) return null;
-      bookShort ??= new Map((await listBuiltInBooks()).map((b) => [b.id, b.short]));
-      const blocks = await blocksFor(e.book, e.start, Math.min(e.end, e.start + 12));
-      return { key, source: 'books', title: e.title, kind: e.kind, label: `${bookShort.get(e.book) || e.book} p. ${e.page}`, href: src.href, html: blocks.join('\n'), score: 0 };
-    });
+    const href = it.sources[0].href;
+    const key = it.sources[0].srd ? `srdh:${href}` : `bkh:${href}`;
+    add(key, rank, () => passageAt(href, key));
+  });
+  // entries the question names outright ("What does the Power Attack feat do?", "the Hide
+  // skill") go to the top: meaning search ranks look-alikes ("Favored Power Attack") as high,
+  // and keyword search can bury a one-word name under its other words
+  // Full weight only when the name is most of what the question is about ("Shadow Weave Magic",
+  // "the Hide skill"); "Can a wizard cast spells in armor?" names "Armor" but asks about casting.
+  const content = norm(keywords(q)).split(' ').filter((w) => w && !ASK_FILLER.has(w));
+  (await namedIn(q)).forEach((n, i) => {
+    const key = n.href.startsWith('#/srd/') ? `srdh:${n.href}` : `bkh:${n.href}`;
+    const covers = norm(n.title).split(' ').filter((w) => content.some((c) => c === w || c.startsWith(w.slice(0, 5)))).length;
+    const major = i === 0 && covers >= Math.max(1, content.length / 2);
+    add(key, 0, () => passageAt(n.href, key), major ? 6 : 0.6);
   });
   wk.forEach((h: any, rank) => {
     add(`wikit:${h.title}`, rank, async () => {
@@ -307,6 +312,89 @@ export async function ask(q: string, limit = 8): Promise<AskResult> {
     if (out.length >= limit) break;
   }
   return { passages: out, ms: { ...sem.ms, total: Math.round(performance.now() - t0) }, meaning };
+}
+
+/** Passage for an SRD or book entry link (its opening blocks). */
+async function passageAt(href: string, key: string): Promise<Passage | null> {
+  if (href.startsWith('#/srd/e/')) {
+    const e = await getEntry(href.replace(/^#\/srd\/e\//, ''));
+    if (!e) return null;
+    const doc = await loadDoc(e.d);
+    return { key, source: 'srd', title: qualifiedTitle(e.t, e.p), kind: e.c, label: 'SRD', href, html: doc.blocks.slice(e.s, Math.min(e.e, e.s + 12)).join('\n'), score: 0 };
+  }
+  const m = href.match(/^#\/book\/([^/]+)\/(.+)$/);
+  if (!m) return null;
+  const rows = await query<any>('books', 'SELECT id, book, anchor, title, kind, page, parent, start, "end" FROM entries WHERE book = ? AND anchor = ?', [m[1], decodeURIComponent(m[2])]);
+  const e = rows[0];
+  if (!e) return null;
+  bookShort ??= new Map((await listBuiltInBooks()).map((b) => [b.id, b.short]));
+  const blocks = await blocksFor(e.book, e.start, Math.min(e.end, e.start + 12));
+  return { key, source: 'books', title: qualifiedTitle(e.title, e.parent), kind: e.kind, label: `${bookShort.get(e.book) || e.book} p. ${e.page}`, href, html: blocks.join('\n'), score: 0 };
+}
+
+// ------------------------------------------------------------------ names in the question
+
+interface Named {
+  title: string;
+  kind: string;
+  href: string;
+}
+// when two things share a name, the first kind here wins (the skill "Hide", not a book's stray "Hide" heading)
+// (and a rules section over a spell or feat: "spell resistance", "damage reduction")
+const NAME_KINDS: Category[] = ['skill', 'condition', 'rule', 'feat', 'spell', 'item', 'class', 'prestige', 'race', 'monster', 'deity'];
+// question words that say what kind of thing is asked about, not which one
+const ASK_FILLER = new Set(['feat', 'feats', 'skill', 'skills', 'spell', 'spells', 'condition', 'class', 'prestige', 'use', 'used', 'give', 'gives', 'work', 'works', 'does', 'mean', 'means', 'explain']);
+// names too general to mean "this entry" when they turn up in a question
+const GENERIC_NAMES = new Set(['attack', 'attacks', 'spell', 'spells', 'feat', 'feats', 'skill', 'skills', 'magic', 'combat', 'actions', 'damage', 'movement', 'hit points', 'character', 'characters', 'class', 'classes', 'monsters', 'items', 'equipment', 'weapons', 'level', 'cast', 'casting']);
+let namesP: Promise<Map<string, Named>> | null = null;
+let namesGen = -1;
+
+function nameMap(): Promise<Map<string, Named>> {
+  if (namesGen !== catalogGeneration()) namesP = null;
+  namesGen = catalogGeneration();
+  namesP ??= (async () => {
+    const map = new Map<string, Named>();
+    const put = (title: string, kind: string, href: string) => {
+      const k = norm(title.replace(/\s*\[[^\]]*\]\s*$/, ''));
+      if (k.length >= 3 && !map.has(k) && !GENERIC_NAMES.has(k)) map.set(k, { title, kind, href });
+    };
+    for (const kind of NAME_KINDS) {
+      // SRD rules sections ("Flanking", "Spell Resistance", "Aid Another")
+      if (kind === 'rule') {
+        for (const e of await loadEntries()) if (e.c === 'rule' && !GENERIC_TITLE.test(e.t)) put(e.t, 'rule', entryHref(e));
+      } else {
+        for (const it of await catalog(kind).catch(() => [])) if (it.sources[0]) put(it.title, kind, it.sources[0].href);
+      }
+    }
+    return map;
+  })().catch((e) => {
+    namesP = null;
+    throw e;
+  });
+  return namesP;
+}
+
+/** Entries named in the question, longest name first, not overlapping. */
+export async function namedIn(q: string): Promise<Named[]> {
+  const map = await nameMap();
+  const words = norm(q).split(' ').filter(Boolean);
+  const out: Named[] = [];
+  const used = new Array(words.length).fill(false);
+  for (let n = Math.min(6, words.length); n >= 1; n--) {
+    for (let i = 0; i + n <= words.length; i++) {
+      if (used.slice(i, i + n).some(Boolean)) continue;
+      const phrase = words.slice(i, i + n).join(' ');
+      // "charging" → "charge", "flanks" → "flank"
+      const hit = map.get(phrase) || (n === 1 ? map.get(phrase.replace(/ing$/, 'e')) || map.get(phrase.replace(/ing$/, '')) || map.get(phrase.replace(/s$/, '')) : undefined);
+      if (!hit) continue;
+      // one-word class, race or monster names ("wizard", "orc") are the subject, not the rule asked about
+      if (n === 1 && !/^(rule|skill|condition|feat|spell)$/.test(hit.kind)) continue;
+      if (n === 1 && words[i].length < 4) continue;
+      out.push(hit);
+      for (let k = i; k < i + n; k++) used[k] = true;
+    }
+  }
+  return out;
 }
 
 export const kindLabel = (k?: string) => (k === 'wiki' ? '' : k && k !== 'rule' ? CATEGORY_LABEL[k as Category] || k : 'Rules');

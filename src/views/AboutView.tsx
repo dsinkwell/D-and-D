@@ -5,6 +5,7 @@ import { OfflineDataCard } from '../OfflineData';
 import { runDiagnostics, type Check } from '../lib/diagnostics';
 import { AskModelSettings } from './AskView';
 import WritingSettings from './WritingSettings';
+import AskQuality from './AskQuality';
 import { clearSaved, countSaved, DEFAULT_WIKI, getWikiSettings, saveWikiSettings, searchWiki } from '../lib/wiki';
 
 export default function AboutView() {
@@ -34,6 +35,7 @@ export default function AboutView() {
       <Header title="About & Settings" back={false} />
 
       <Diagnostics />
+      <AskQuality />
 
       <section className="card">
         <h2>Install on your devices</h2>

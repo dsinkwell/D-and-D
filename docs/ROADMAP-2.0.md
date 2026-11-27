@@ -27,6 +27,11 @@ The original brainstorm is kept below the decisions.
 **Progress (branch `v2`, not yet merged to `main`)**
 - Done: tap-to-link (`src/lib/autolink.ts`; audited on all 27 books), tap-to-roll dice
   (`src/lib/rollers.ts`, `src/lib/dice.ts`, `src/DiceTray.tsx`; compact result bar, Adv./Dis. for the next d20).
+- Done: Ask quality test set (`src/lib/ask/quality-questions.ts`, runner `src/lib/ask/quality.ts`; About →
+  Ask quality test in the app, which can also check written answers; `scripts/ask/quality.cjs` from the
+  command line). 59 questions, 17 of them held out (written after tuning). Search levels: 52/66 at the
+  start → 93/96. Held-out set before fixes: 21/30. Known gap: weapon/armor table lookups (cost of full
+  plate, longbow range increment) need a table-aware direct answer.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).
 - Testing books locally: unlock them in a Playwright profile with the passphrase from the user (never commit it).
 

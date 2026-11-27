@@ -19,7 +19,8 @@ export interface Direct {
 export interface ListAnswer {
   label: string;
   href: string;
-  items: CatalogItem[];
+  items: CatalogItem[]; // the first 12, for display
+  all: CatalogItem[];
   total: number;
 }
 
@@ -316,7 +317,7 @@ async function wikiAnswer(p: Parsed, attr: Attr | null): Promise<Direct | null> 
 
 /** "Who is the god of thieves?" → deities whose portfolio mentions it (Realms deities first). */
 async function deityOf(q: string): Promise<Direct | null> {
-  const m = q.toLowerCase().match(/^(?:who|which|what) (?:is|are|was) (?:the )?(?:god|goddess|deity|deities|gods|power|patron)(?: \w+)? of (?:the )?(.+?)[?.!]*$/);
+  const m = q.toLowerCase().trim().match(/^(?:(?:who|which|what) (?:is|are|was) )?(?:the )?(?:god|goddess|deity|deities|gods|power|patron)(?: \w+)? of (?:the )?(.+?)[?.!]*$/);
   if (!m) return null;
   const want = m[1].replace(/s$/, '').slice(0, 7);
   const all = (await catalog('deity')).filter((d) => d.portfolio && new RegExp(`\\b${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(d.portfolio));
@@ -381,7 +382,7 @@ export async function listAnswer(q: string): Promise<ListAnswer | null> {
     if (level !== null) params.set('level', String(level));
     if (school) params.set('school', school);
     const label = [level !== null ? `Level ${level}` : '', school || '', cls ? CLASS_NAMES[cls] || cls : '', 'spells'].filter(Boolean).join(' ');
-    return { label, href: `#/rules/spell?${params}`, items: items.slice(0, 12), total: items.length };
+    return { label, href: `#/rules/spell?${params}`, items: items.slice(0, 12), all: items, total: items.length };
   }
   if (/\b(monsters?|creatures?|undead|dragons?|outsiders?|aberrations?|constructs?|elementals?|giants?|oozes?|plants?|vermin|fey|beasts?)\b/.test(s) && /\bcr\b|challenge/.test(s)) {
     const type = CREATURE_TYPES.find((t) => new RegExp(`\\b${t}s?\\b`).test(s));
@@ -396,7 +397,7 @@ export async function listAnswer(q: string): Promise<ListAnswer | null> {
     items.sort((a, b2) => crValue(a.cr) - crValue(b2.cr) || a.title.localeCompare(b2.title));
     const params = new URLSearchParams({ sort: 'cr' });
     if (type) params.set('type', titleCase(type));
-    return { label: `${type ? titleCase(type) + ' ' : ''}monsters, CR ${r[1]}${r[2] ? `–${r[2]}` : ''}`, href: `#/rules/monster?${params}`, items: items.slice(0, 12), total: items.length };
+    return { label: `${type ? titleCase(type) + ' ' : ''}monsters, CR ${r[1]}${r[2] ? `–${r[2]}` : ''}`, href: `#/rules/monster?${params}`, items: items.slice(0, 12), all: items, total: items.length };
   }
   return null;
 }

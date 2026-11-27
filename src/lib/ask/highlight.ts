@@ -42,6 +42,9 @@ export function sentences(text: string): string[] {
   return out;
 }
 
+const GENERIC_ASK = new Set(['work', 'use', 'used', 'function', 'explain', 'describe', 'tell', 'detail'].map((w) => w.replace(/(ing|ed|es|s)$/, '').slice(0, 6)));
+const MECHANICS = /[+−–-]\s?\d+\b|\bDC \d+|\b\d*d\d+\b|\bbonus\b|\bpenalty\b|\bAC\b|\bcheck\b/gi;
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export interface Highlight {
@@ -50,7 +53,7 @@ export interface Highlight {
 }
 
 /** Excerpt of about `size` characters around the best-matching sentence(s), with them marked. */
-export function highlight(html: string, q: string, size = 360, title = ''): Highlight {
+export function highlight(html: string, q: string, size = 360, title = '', lead = false): Highlight {
   const text = textOf(html);
   const sents = sentences(text);
   const terms = questionTerms(q);
@@ -58,12 +61,16 @@ export function highlight(html: string, q: string, size = 360, title = ''): High
   // sentence answers the question; a sentence that is only the name (a heading) never does
   const named = new Set(questionTerms(title));
   if (!sents.length) return { excerpt: '', score: 0 };
+  // "How does charging work?" names its subject and nothing else: then the sentences that carry
+  // the mechanics (bonuses, penalties, DCs, dice) are the ones worth giving
+  const onlyName = terms.every((t) => named.has(t) || GENERIC_ASK.has(t));
   const scoreOf = (s: string) => {
     const words = (s.toLowerCase().match(/[a-z0-9+']+/g) || []).map(stem);
     if (words.length < 3 || words.every((w) => named.has(w) || STOP.has(w))) return 0;
     const set = new Set(words);
     let sc = 0;
     for (const t of terms) if (set.has(t)) sc += (named.has(t) ? 0.35 : 1) * (1 + Math.min(t.length, 6) / 6);
+    if (onlyName) sc += Math.min(3, (s.match(MECHANICS) || []).length) * 0.6;
     return sc / Math.sqrt(Math.max(6, words.length)); // prefer focused sentences over long ones
   };
   let best = 0;
@@ -89,7 +96,19 @@ export function highlight(html: string, q: string, size = 360, title = ''): High
   // marking the only sentence there is adds nothing
   const mark = bestScore > 0 && sents.length > 1;
   const parts = sents.slice(lo, hi + 1).map((s, k) => (marked.has(lo + k) && mark ? `<mark>${esc(s)}</mark>` : esc(s)));
-  return { excerpt: (lo > 0 ? '… ' : '') + parts.join(' ') + (hi < sents.length - 1 ? ' …' : ''), score: bestScore };
+  // `lead`: a rules section usually states its rule in its first sentence ("A character takes
+  // 1d6 points of damage per 10 feet fallen…"); keep it even when the best match is further on
+  let head = '';
+  if (lead && lo > 0) {
+    // the best of the opening sentences (the first one is sometimes scene-setting)
+    let first = -1;
+    for (let i = 0; i < Math.min(3, lo); i++) {
+      if (sents[i].length <= 40 || !/[.!?]$/.test(sents[i])) continue;
+      if (first < 0 || scoreOf(sents[i]) > scoreOf(sents[first])) first = i;
+    }
+    if (first >= 0 && first < lo) head = `${esc(sents[first].length > 300 ? sents[first].slice(0, 300) + '…' : sents[first])} ${first + 1 < lo ? '… ' : ''}`;
+  }
+  return { excerpt: head + (lo > 0 && !head ? '… ' : '') + parts.join(' ') + (hi < sents.length - 1 ? ' …' : ''), score: bestScore };
 }
 
 /** Key words of a question, as 5-letter prefixes ("Becoming" and "become" both → "becom"). */

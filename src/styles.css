@@ -2490,3 +2490,13 @@ html.dice-open .main {
 .dice-quick .btn {
   border: 1px solid var(--border);
 }
+
+.row-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.error-text {
+  color: #b23a2a;
+}
