@@ -6,5 +6,6 @@ class MainViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(WriterPlugin())
         bridge?.registerPluginInstance(LocalWriterPlugin())
+        bridge?.registerPluginInstance(CloudSyncPlugin())
     }
 }

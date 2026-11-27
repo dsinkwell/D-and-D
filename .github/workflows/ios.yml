@@ -88,6 +88,24 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             archive | tail -40
 
+      # The archive is unsigned, so its entitlements (iCloud key-value storage, for syncing the
+      # user's characters, lists and homebrew) aren't in it yet. An interim ad-hoc signature
+      # carries them; the export below re-signs for distribution and keeps them.
+      - name: Add the app's entitlements to the archive
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app"
+          sed -e "s/\$(TeamIdentifierPrefix)/$APPLE_TEAM_ID./" -e "s/\$(CFBundleIdentifier)/io.github.dsinkwell.frreference/" \
+            ios/App/App/App.entitlements > "$RUNNER_TEMP/App.entitlements"
+          if [ -d "$APP/Frameworks" ]; then
+            find "$APP/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign --force --sign - {} \;
+          fi
+          codesign --force --sign - --entitlements "$RUNNER_TEMP/App.entitlements" --generate-entitlement-der "$APP"
+          echo "Entitlements now in the archived app:"
+          codesign -d --entitlements - "$APP"
+
       - name: Upload to TestFlight
         if: env.HAS_SIGNING == 'true'
         env:

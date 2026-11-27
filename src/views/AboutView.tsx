@@ -6,6 +6,7 @@ import { runDiagnostics, type Check } from '../lib/diagnostics';
 import { AskModelSettings } from './AskView';
 import WritingSettings from './WritingSettings';
 import AskQuality from './AskQuality';
+import CloudSyncCard from './CloudSyncCard';
 import { clearSaved, countSaved, DEFAULT_WIKI, getWikiSettings, saveWikiSettings, searchWiki } from '../lib/wiki';
 
 export default function AboutView() {
@@ -34,6 +35,7 @@ export default function AboutView() {
     <div className="page about">
       <Header title="About & Settings" back={false} />
 
+      <CloudSyncCard />
       <Diagnostics />
       <AskQuality />
 

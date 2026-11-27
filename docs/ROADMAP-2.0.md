@@ -69,6 +69,12 @@ The original brainstorm is kept below the decisions.
   someone else are marked imported (homebrew read-only, "from Dana"). Tested DM → player → updated rules.
   Not yet: opening a .frref.json straight from AirDrop/Files into the native app (needs a document type in
   Info.plist + handling the open-URL event); the share sheet inside the native app is untested.
+- Built, not yet on a device (step 4): iCloud sync (native app). `ios/App/App/CloudSyncPlugin.swift` (iCloud
+  key-value storage, entitlement in `ios/App/App/App.entitlements`; the iOS workflow ad-hoc-signs the unsigned
+  archive with it before the export re-signs for distribution), `src/lib/cloud.ts` (one key per record,
+  last change wins, tombstones; bookmarks, Jump to, house-rules switch and sharing name as small documents),
+  About → iCloud sync card. Merge logic tested with two simulated devices; the real iCloud path needs a
+  TestFlight build (and maybe the iCloud capability ticked on the App ID).
 - **Open (needs the PDFs again):** 10 books have their tables flattened into text by the extraction
   (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u), so they have no readable tables yet.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).

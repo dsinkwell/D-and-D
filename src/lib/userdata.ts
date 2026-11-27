@@ -66,6 +66,30 @@ export const getRecord = <T = any>(id: string) => {
   return r && !r.deleted ? (r as UserRecord<T>) : undefined;
 };
 
+const savedListeners = new Set<(r: UserRecord) => void>();
+/** Run `f` after every local save (iCloud sync pushes the record). Not called for applyRemote. */
+export function onSaved(f: (r: UserRecord) => void) {
+  savedListeners.add(f);
+}
+
+/** All records, tombstones included (for sync). */
+export async function allRecordsForSync(): Promise<UserRecord[]> {
+  await loadUserData();
+  return [...records.values()];
+}
+
+/** A record that arrived from another device: stored as is (its own change time), not pushed back. */
+export async function applyRemote(r: UserRecord): Promise<boolean> {
+  await loadUserData();
+  const cur = records.get(r.id);
+  if (cur && cur.updated >= r.updated) return false;
+  records.set(r.id, r);
+  typeListeners.get(r.type)?.forEach((f) => f());
+  emit();
+  await idbSet(r.id, r, store).catch(() => {});
+  return true;
+}
+
 export async function saveRecord<T>(r: Omit<UserRecord<T>, 'updated' | 'created'> & { created?: number }): Promise<UserRecord<T>> {
   const now = Date.now();
   const full: UserRecord<T> = { ...r, created: r.created ?? records.get(r.id)?.created ?? now, updated: now };
@@ -73,6 +97,7 @@ export async function saveRecord<T>(r: Omit<UserRecord<T>, 'updated' | 'created'
   typeListeners.get(full.type)?.forEach((f) => f());
   emit();
   await idbSet(full.id, full, store).catch(() => {});
+  savedListeners.forEach((f) => f(full));
   return full;
 }
 

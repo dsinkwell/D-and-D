@@ -16,7 +16,10 @@ export interface ShareFile {
 }
 
 export const myName = () => readLocal<string>('rc.author', '');
-export const setMyName = (n: string) => writeLocal('rc.author', n.trim());
+export const setMyName = (n: string) => {
+  writeLocal('rc.author', n.trim());
+  window.dispatchEvent(new Event('rc-author')); // iCloud sync passes it to the user's other devices
+};
 
 export function shareFileFor(records: UserRecord[]): ShareFile {
   const author = myName() || undefined;

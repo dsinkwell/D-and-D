@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { whenIdle } from './lib/busy';
 import { cleanupLabStorage } from './lib/cleanup';
+import { startCloudSync } from './lib/cloud';
 import './styles.css';
 
 // A new version installs in the background; the page switches to it only when no download or
@@ -22,6 +23,8 @@ const updateSW = registerSW({
 
 // free space left by the removed AI test page, once, a little after start-up
 setTimeout(() => void cleanupLabStorage(), 5000);
+// iCloud sync of the user's own data (native app only; does nothing on the web)
+setTimeout(() => void startCloudSync(), 1500);
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
