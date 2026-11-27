@@ -46,6 +46,8 @@ The user declared this the 1.0 version. If you are resuming, start here. The bra
 
 ## Next: version 2.0 (in progress)
 
+**27 Nov, 21:09 UTC: `v2` merged into `main`** (steps 1–3: tap-to-link, dice, Ask quality test + cross-references + table answers, characters, lists, homebrew/house rules, file sharing) → website deployed (run 24) and **TestFlight build 21** uploaded. Keep working on `v2`; merge again with the user's OK.
+
 Plan and the user's decisions: **`docs/ROADMAP-2.0.md`**. **Owed to the user before 2.0 is finished:** step 2b there (table extraction for 10 books whose tables are flattened; needs the PDFs again). Work happens on branch **`v2`** (no workflow builds it). Ask the user before merging into `main` (deploys the website and builds a TestFlight app) or triggering any build/deploy. Doc-only commits to `main` use `[skip ci]`.
 
 ## Architecture (current)
