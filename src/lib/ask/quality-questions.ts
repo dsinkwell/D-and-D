@@ -305,4 +305,17 @@ export const QUESTIONS: QualityQuestion[] = [
   { id: 'greater-invisibility', q: 'What does greater invisibility do?', topic: 'spell', sources: ['Greater Invisibility', 'Invisibility, Greater'], prompt: ['attack', 'invisible'], answer: ['attack'] },
   { id: 'mass-bulls-strength', q: "What does mass bull's strength do?", topic: 'spell', sources: ["Mass Bull's Strength", "Bull's Strength, Mass"], prompt: ['\\+4 enhancement bonus to strength|enhancement bonus to strength'], answer: ['\\+4'] },
   { id: 'resist-energy-mass', q: 'How does mass resist energy work?', topic: 'spell', needs: ['books'], sources: ['Mass Resist Energy', 'Resist Energy, Mass'], prompt: ['resist energy', 'resistance (10|to energy)|energy resistance'], answer: ['resist'] },
+
+  // ---------------------------------------------------------------- table lookups (src/lib/tables.ts):
+  // written while building it, so they are regression checks, not a held-out measure
+  { id: 'tbl-full-plate-asf', q: 'arcane spell failure of chain mail', topic: 'equipment', direct: '30%' },
+  { id: 'tbl-longsword-damage', q: 'damage of a longsword', topic: 'equipment', direct: '1d8' },
+  { id: 'tbl-greatsword-weight', q: 'how much does a greatsword weigh', topic: 'equipment', direct: '8 lb' },
+  { id: 'tbl-composite-longbow', q: 'range increment of a composite longbow', topic: 'equipment', direct: '110 ft' },
+  { id: 'tbl-masterwork', q: 'cost of a masterwork longsword', topic: 'equipment', direct: '315 gp' },
+  { id: 'tbl-potion-clw', q: 'how much does a potion of cure light wounds cost', topic: 'magic', direct: '\\b50 gp' },
+  { id: 'tbl-ring-protection', q: 'cost of a ring of protection +1', topic: 'magic', direct: '2,000 gp' },
+  { id: 'tbl-horse', q: 'how much does a horse cost', topic: 'equipment', direct: '200 gp.*75 gp|75 gp.*200 gp' },
+  { id: 'tbl-rapier-crit', q: 'critical range of a rapier', topic: 'equipment', direct: '18[–-]20' },
+  { id: 'tbl-not-a-table', q: 'What is a longsword?', topic: 'equipment', sources: ['Longsword', 'Weapons', 'Weapon Descriptions', 'Martial Weapons'] },
 ];

@@ -36,6 +36,14 @@ The original brainstorm is kept below the decisions.
   "As X, except" (always, looked up as a spell) and "see X" (only when X shares two key words with the
   question) add X as an extra source (Apple: up to 2, open models: 1). 4 cross-reference questions added;
   whole set 101/104 on search levels.
+- Done: table answers (`src/lib/tables.ts`, used by `directAnswer` as a fallback): every table in the SRD and
+  the books (2,983 tables, 24,868 rows) indexed by row name × column heading, built once per device and kept
+  in IndexedDB (rebuilt when the books change). Handles name columns that aren't first (d% tables), merged
+  headings, "Horse, heavy/light", "composite longbow", masterwork (+300 gp weapon / +150 gp armor), Medium
+  columns, roll-range misalignment; random-roll tables rank last. Quality test 113/114 (the failure: "What
+  is a longsword?" — weapon descriptions are not separate entries).
+- **Open (needs the PDFs again):** 10 books have their tables flattened into text by the extraction
+  (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u), so they have no readable tables yet.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).
 - Testing books locally: unlock them in a Playwright profile with the passphrase from the user (never commit it).
 

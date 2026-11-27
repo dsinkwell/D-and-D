@@ -173,3 +173,14 @@ export async function findInBooks(title: string, kind?: string): Promise<BookHit
 }
 
 export const bookEntryHref = (e: { book: string; anchor: string }) => `#/book/${e.book}/${encodeURIComponent(e.anchor)}`;
+
+/** Every block of every book, chunk by chunk (for building indexes such as the table index). */
+export async function scanBlocks(visit: (book: string, idx: number, block: string, blocks: string[], i: number) => void) {
+  const size = await getChunkSize();
+  const list = await query<{ book: string; n: number }>('books', 'SELECT book, n FROM chunks ORDER BY book, n');
+  for (const { book, n } of list) {
+    const r = await query<{ data: Uint8Array }>('books', 'SELECT data FROM chunks WHERE book = ? AND n = ?', [book, n]);
+    const blocks: string[] = JSON.parse(await inflate(r[0]?.data));
+    blocks.forEach((b, i) => visit(book, n * size + i, b, blocks, i));
+  }
+}

@@ -8,6 +8,7 @@ import { getEntry, loadDoc, Category, CLASS_NAMES, SCHOOLS, crValue } from '../s
 import { offlineArticle, offlineTitleExists } from '../wikiOffline';
 import { wikiHref } from '../router';
 import { textOf } from './highlight';
+import { tableIndex, tableLookup } from '../tables';
 
 export interface Direct {
   html: string; // the answer as a sentence, value in <b>
@@ -128,7 +129,12 @@ function nameIndex() {
   return names;
 }
 export const resetDirect = () => (names = null);
-export const warmDirect = () => void nameIndex().catch(() => {});
+export const warmDirect = () => {
+  void nameIndex().catch(() => {});
+  // the table index: built once per device (a few seconds), then read from storage
+  const idle = (globalThis as any).requestIdleCallback || ((f: () => void) => setTimeout(f, 1500));
+  idle(() => void tableIndex().catch(() => {}));
+};
 
 const clean = (s: string) => s.replace(/^(the|a|an)\s+/i, '').replace(/[?.!]+$/, '').trim();
 
@@ -338,7 +344,7 @@ export async function directAnswer(q: string): Promise<Direct | null> {
   const god = await deityOf(q).catch(() => null);
   if (god) return god;
   const p = parse(q);
-  if (!p) return null;
+  if (!p) return tableAnswer(q);
   const attr = p.attr ? ATTRS[p.attr] : null;
   // People and places are best described by the wiki; rules things by the books.
   const wikiFirst = /^\s*(who|where)\b/i.test(q);
@@ -347,7 +353,29 @@ export async function directAnswer(q: string): Promise<Direct | null> {
     const a = await f(p, attr).catch(() => null);
     if (a) return a;
   }
-  return null;
+  return tableAnswer(q);
+}
+
+/** "How much does full plate cost?" → the cell of the table that lists it. */
+async function tableAnswer(q: string): Promise<Direct | null> {
+  const t = await tableLookup(q).catch(() => null);
+  if (!t) return null;
+  const more = t.others.length ? ` Other tables: ${t.others.map((o) => `${esc(o.value)} (${esc(o.table.caption)}, ${esc(o.table.source)})`).join('; ')}.` : '';
+  // the tables list base prices; a masterwork weapon costs 300 gp more, masterwork armor or a shield 150 gp
+  let mw = '';
+  const gp = t.value.match(/^([\d,]+) gp$/);
+  if (/\bmasterwork\b/i.test(q) && /cost|price/i.test(t.header) && gp) {
+    const armor = /armou?r|shield/i.test(t.table.caption);
+    const add = armor ? 150 : 300;
+    const total = Number(gp[1].replace(/,/g, '')) + add;
+    mw = ` Masterwork adds ${add} gp ${armor ? 'for armor or a shield' : 'for a weapon'}: ${b(`${total.toLocaleString('en-US')} gp`)} in all.`;
+  }
+  return {
+    html: `<b>${esc(t.row)}</b> — ${esc(t.header)}: ${b(t.value)} (${esc(t.table.caption)}).${mw}${more}`,
+    title: t.row,
+    href: t.table.href,
+    source: t.table.source,
+  };
 }
 
 // ------------------------------------------------------------------ list questions
