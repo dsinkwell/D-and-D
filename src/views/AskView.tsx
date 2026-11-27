@@ -50,6 +50,7 @@ export default function AskView({ route }: { route: Route }) {
   const [ans, setAns] = useState<Answer | null>(null);
   const [model, setModel] = useState<boolean | null>(null);
   const [canWrite, setCanWrite] = useState(false);
+  const [writeWhy, setWriteWhy] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function AskView({ route }: { route: Route }) {
     warmDirect();
     writerAvailability().then((a) => {
       setCanWrite(a.available);
+      if (!a.available && a.reason !== 'web') setWriteWhy(a.reason || 'unknown reason');
       if (a.available) prewarmWriter();
     });
     if (!routeQ) inputRef.current?.focus();
@@ -136,6 +138,7 @@ export default function AskView({ route }: { route: Route }) {
       {ans && (
         <div className={`ask-results ${busy ? 'stale' : ''}`} data-q={ans.q}>
           {canWrite && <WriteCard key={ans.q} q={ans.q} />}
+          {!canWrite && writeWhy && <p className="muted ask-status">Write an answer isn’t available: {writeWhy}</p>}
 
           {ans.direct && (
             <a className="ask-direct" href={ans.direct.href}>

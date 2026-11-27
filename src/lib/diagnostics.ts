@@ -2,6 +2,7 @@
 // Useful inside the native app, whose built-in browser can differ from Safari.
 import { dataBase, dbStatus } from './db';
 import { isNative } from './platform';
+import { writerAvailability } from './ask/writer';
 
 export interface Check {
   name: string;
@@ -46,6 +47,10 @@ export async function runDiagnostics(): Promise<Check[]> {
     add('Storage space', true, `${Math.round((est.usage || 0) / 1e6)} MB used of ${Math.round((est.quota || 0) / 1e6)} MB allowed`);
   } catch (e) {
     add('Storage space', false, msg(e));
+  }
+  if (isNative()) {
+    const w = await writerAvailability();
+    add('Write an answer (Apple Intelligence)', w.available, w.available ? 'available' : w.reason || 'not available');
   }
   add('Device', true, navigator.userAgent);
   return out;

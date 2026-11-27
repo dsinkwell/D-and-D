@@ -6,6 +6,7 @@ import { searchRules } from '../catalog';
 import { offlineSearch } from '../wikiOffline';
 import { wikiHref } from '../router';
 import { keywords, textOf } from './highlight';
+import { isNative } from '../platform';
 
 export type AskSource = 'srd' | 'books' | 'wiki';
 
@@ -64,6 +65,7 @@ const CACHE = 'ask-models';
 
 /** Are the Ask model files stored on this device? */
 export async function askDownloaded(): Promise<boolean> {
+  if (isNative()) return true; // the native app bundles the model files
   try {
     const c = await caches.open(CACHE);
     for (const f of MODEL_FILES) if (!(await c.match(new URL(f, absBase()).href, { ignoreVary: true }))) return false;
@@ -75,6 +77,7 @@ export async function askDownloaded(): Promise<boolean> {
 
 /** Download the model files into the cache the service worker serves them from. */
 export async function downloadAsk(onProgress: (done: number, total: number) => void) {
+  if (isNative()) return onProgress(1, 1); // bundled with the app (and the Cache API can't store app:// URLs)
   const c = await caches.open(CACHE);
   const sizes = [0.01, 0.7, 0.01, 0.01, 34, 11.1, 0.02, 1.7, 0.2]; // MB, for the progress bar
   const total = sizes.reduce((a, b) => a + b, 0);
