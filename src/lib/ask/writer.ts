@@ -16,9 +16,16 @@ const getPlugin = () => (plugin ??= import('@capacitor/core').then(({ registerPl
 let avail: Promise<{ available: boolean; reason?: string }> | null = null;
 export function writerAvailability() {
   if (!isNative()) return Promise.resolve({ available: false, reason: 'web' });
-  avail ??= getPlugin()
-    .then((w) => w.availability())
-    .catch((e) => ({ available: false, reason: String(e?.message || e) }));
+  // A plugin call the native side doesn't recognise never answers, so don't wait forever.
+  const C = (window as any).Capacitor;
+  const plugins = () => (C?.PluginHeaders || []).map((h: { name: string }) => h.name).join(', ') || 'none';
+  const timeout = new Promise<{ available: boolean; reason: string }>((res) =>
+    setTimeout(() => res({ available: false, reason: `no reply from the app's Writer plugin (registered: ${plugins()}; Writer available: ${C?.isPluginAvailable?.('Writer')})` }), 4000),
+  );
+  avail ??= Promise.race([getPlugin().then((w) => w.availability()), timeout]).catch((e) => ({
+    available: false,
+    reason: `${String(e?.message || e)} (registered: ${plugins()})`,
+  }));
   return avail;
 }
 
