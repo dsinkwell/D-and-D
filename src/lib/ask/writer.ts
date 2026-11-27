@@ -143,7 +143,9 @@ export async function writeAnswer(
   found?: { direct: Direct | null; passages: Passage[] }, // results the Ask search already has
   engine: Engine = { kind: 'apple' },
 ): Promise<Written> {
-  const built = found ? await promptFrom(q, found.direct, found.passages) : await buildPrompt(q);
+  // small open models are easily led off by extra sources: give them at most 2 (Apple: 3)
+  const n = engine.kind === 'local' ? 2 : 3;
+  const built = found ? await promptFrom(q, found.direct, found.passages, n) : await buildPrompt(q, n);
   onSources?.(built);
   const id = Math.random().toString(36).slice(2);
   const t0 = performance.now();

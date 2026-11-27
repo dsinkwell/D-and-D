@@ -91,3 +91,13 @@ export function highlight(html: string, q: string, size = 360, title = ''): High
   const parts = sents.slice(lo, hi + 1).map((s, k) => (marked.has(lo + k) && mark ? `<mark>${esc(s)}</mark>` : esc(s)));
   return { excerpt: (lo > 0 ? '… ' : '') + parts.join(' ') + (hi < sents.length - 1 ? ' …' : ''), score: bestScore };
 }
+
+/** Key words of a question, as 5-letter prefixes ("Becoming" and "become" both → "becom"). */
+export const keyTerms = (q: string) =>
+  [...new Set((q.toLowerCase().match(/[a-z0-9]+/g) || []).filter((w) => w.length > 2 && !STOP.has(w)).map((w) => w.slice(0, 5)))];
+
+/** Which of `terms` appear in a text (same 5-letter prefixes). */
+export function termsIn(text: string, terms: string[]) {
+  const have = new Set((text.toLowerCase().match(/[a-z0-9]+/g) || []).map((w) => w.slice(0, 5)));
+  return terms.filter((t) => have.has(t));
+}

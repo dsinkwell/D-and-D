@@ -3,7 +3,7 @@
 // "Write an answer" (Apple's on-device model) and the web test page (#/lab).
 import { ask, type Passage } from './engine';
 import { directAnswer, type Direct } from './direct';
-import { highlight, textOf } from './highlight';
+import { highlight, keyTerms, termsIn, textOf } from './highlight';
 import { query } from '../db';
 
 export const INSTRUCTIONS = [
@@ -53,8 +53,16 @@ export function selectSources(q: string, passages: Passage[], max = 3, about?: s
   const rel = unique.map((p) => highlight(p.html, q, 360, p.title).score);
   const topScore = unique[0].score || 1;
   const topRel = Math.max(...rel, 0.0001);
+  // An extra source must mention every key word of the question that the best source mentions:
+  // "Can a wizard cast spells in armor?" keeps "Arcane Spells and Armor" (wizard, cast, spell,
+  // armor) but drops "Creating Magic Armor" (no wizard), which a small model otherwise answers from.
+  const terms = keyTerms(q);
+  const excerptOf = (p: Passage) => textOf(highlight(p.html, q, 900, p.title).excerpt) + ' ' + p.title;
+  const need = termsIn(excerptOf(unique[0]), terms);
   const keep = unique.filter((p, i) => {
     if (i === 0) return true;
+    const has = termsIn(excerptOf(p), need);
+    if (has.length < need.length) return false;
     if (topSim > 0 && p.sim) return p.sim >= topSim - 0.035; // bge scores bunch closely; 0.035 drops the clearly weaker ones
     return p.score >= topScore * 0.6 && rel[i] >= topRel * 0.5;
   });
