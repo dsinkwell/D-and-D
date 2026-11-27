@@ -44,9 +44,9 @@ The user declared this the 1.0 version. If you are resuming, start here. The bra
 - Not yet done: inviting the user's group to TestFlight; checking the app on a Mac/iPad.
 - Rebuilding the books needs the PDFs again (user's Google Drive folder; the session scratchpad copy is temporary) and the passphrase from the user.
 
-## Next: version 2.0 (planning)
+## Next: version 2.0 (in progress)
 
-Brainstorm and open questions: **`docs/ROADMAP-2.0.md`**. The user wants to brainstorm first: make no code changes, commits or builds for 2.0 until the user approves each action.
+Plan and the user's decisions: **`docs/ROADMAP-2.0.md`**. Work happens on branch **`v2`** (no workflow builds it). Ask the user before merging into `main` (deploys the website and builds a TestFlight app) or triggering any build/deploy. Doc-only commits to `main` use `[skip ci]`.
 
 ## Architecture (current)
 

@@ -1,8 +1,64 @@
 # FR Reference 2.0 — brainstorm (27 Nov 2026)
 
-Status: **ideas only.** The user wants to brainstorm first. Make no changes, commits or builds
-for 2.0 until the user approves each action. Version 1.0 is described in `CLAUDE.md` and marked
-by the `release-1.0` branch.
+Status: **plan agreed (27 Nov 2026); work started on branch `v2`.** Version 1.0 is described in
+`CLAUDE.md` and marked by the `release-1.0` branch. Still ask the user before merging into `main`
+(that deploys the website and builds a TestFlight app) and before any other build or deploy.
+The original brainstorm is kept below the decisions.
+
+## Decisions (27 Nov 2026)
+
+**The user's answers**
+1. Used by both DM and players, mainly **at the table**.
+2. Devices: **Mac, iPad and iPhones**.
+3. **Everyone in the group has their own copy** (own TestFlight install, own data, own iCloud).
+4. No pain points with 1.0 yet.
+
+**Picked for 2.0, in this order**
+1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
+2. Ask quality test set, then cross-reference following.
+3. Character spellbooks / lists (**per character, with spells-per-day tracking**) and homebrew
+   entries, on one shared saved-data format. Sharing by **file** (option A below).
+4. iCloud sync across each person's own devices (native app only; the web app keeps data per device).
+5. Follow-up questions, then "Explain this" on any entry.
+6. iPad/Mac layout (stays sixth).
+7. Forgotten Realms tools (Calendar of Harptos, travel distances).
+8. TestFlight invite for the group (as **internal testers**, no Beta App Review) + first-run guide.
+
+**Sharing homebrew with the group: option A, files.** Share → AirDrop/Messages/Mail; opening the file
+imports it (web app: share sheet or download, then "Import file…"). Re-importing an entry offers
+replace / keep both / skip. Lists and spellbooks share the same way. A live shared iCloud collection
+(option C) stays a later option. The **house rules file is owned by the user (DM)**: players import
+it but don't edit it. House rules are one set, switchable off ("Show rules as written").
+
+**House rules: skills**
+
+| New skill | Replaces | Key ability |
+|---|---|---|
+| Acrobatics | Balance, Escape Artist, Tumble | Dex |
+| Athletics | Climb, Jump, Swim | Str |
+| Perception | Spot, Listen | Wis |
+| Stealth | Hide, Move Silently | Dex |
+| Investigate | Search (renamed) | Int |
+
+- Class skills: a combined skill is a class skill if any skill it replaces was (all classes and prestige classes).
+- Feats and racial bonuses on the old skills (Alertness, Stealthy, Athletic, Agile, Acrobatic, racial
+  bonuses such as the elf's Listen/Search/Spot) **grant advantage** instead of their bonus.
+  - A bonus covering only part of a new skill gives advantage on that use only (halfling Move
+    Silently → advantage when moving silently, not when hiding).
+  - Racial bonuses to a single old skill also become advantage; item and spell bonuses stay numbers.
+  - Monster stat blocks keep their printed numbers, with a note "House rule: racial bonus → advantage".
+- Monster stat blocks: the new skill shows the higher old value, originals in small print
+  ("Stealth +8 (Hide +8, Move Silently +6)").
+- Acrobatics is usable untrained; tumbling past enemies needs at least 1 rank.
+- All combined skills keep the armor check penalty; swimming still takes double.
+- Synergies inside one new skill disappear; synergies to other skills carry over (Investigate → Survival for tracking).
+- Perception notices; Investigate is careful searching (traps, secret doors, clues; trapfinding uses Investigate).
+- **Not doing:** rewriting every mention of the old skills in the book text. Search aliases
+  ("Hide" finds Stealth) and the five new skill entries (drafted from the SRD, reviewed by the user) are in.
+
+---
+
+# Original brainstorm
 
 Sizes are rough: small (hours), medium (a day or two), large (several days).
 
