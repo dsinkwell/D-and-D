@@ -8,23 +8,21 @@
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview",
-    "prebuild": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/copy-lab.mjs && node scripts/fetch-models.mjs",
-    "predev": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/copy-lab.mjs",
+    "prebuild": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/fetch-models.mjs",
+    "predev": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs",
     "fetch:models": "node scripts/fetch-models.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.6.2",
     "@capacitor/ios": "^8.6.2",
     "@huggingface/transformers": "^3.7.5",
-    "@mlc-ai/web-llm": "^0.2.88",
     "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
     "dompurify": "^3.5.0",
     "idb-keyval": "^6.3.0",
     "minisearch": "^7.2.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tjs4": "npm:@huggingface/transformers@^4.3.2"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",

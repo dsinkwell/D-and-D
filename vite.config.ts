@@ -30,10 +30,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,json,webmanifest,wasm}'],
         // The offline wiki/books databases are downloaded explicitly into OPFS, not precached.
         // The Ask model/runtime (~47 MB) is opt-in: downloaded from the Ask page into its own cache.
-        globIgnores: ['data/**', 'models/**', 'ort/**', 'ask/**', 'lab/**', 'assets/lab-*'],
+        globIgnores: ['data/**', 'models/**', 'ort/**', 'ask/**'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/data\//, /\/models\//, /\/ort\//, /\/ask\//, /\/lab\//],
+        navigateFallbackDenylist: [/\/data\//, /\/models\//, /\/ort\//, /\/ask\//],
         runtimeCaching: [
           {
             // Ask: model, ONNX runtime and SRD meaning index, stored by downloadAsk() in this cache.
@@ -60,10 +60,6 @@ export default defineConfig({
     alias: [{ find: /^onnxruntime-web$/, replacement: 'onnxruntime-web/wasm' }],
   },
   optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
-  worker: {
-    format: 'es',
-    // the lab-only WebLLM engine (6 MB) gets a recognisable name so it stays out of the precache
-    rollupOptions: { output: { chunkFileNames: (c) => (c.moduleIds.some((id) => id.includes('@mlc-ai')) ? 'assets/lab-webllm-[hash].js' : 'assets/[name]-[hash].js') } },
-  },
+  worker: { format: 'es' },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
 });

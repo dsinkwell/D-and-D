@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { whenIdle } from './lib/busy';
+import { cleanupLabStorage } from './lib/cleanup';
 import './styles.css';
 
 // A new version installs in the background; the page switches to it only when no download or
@@ -18,6 +19,9 @@ const updateSW = registerSW({
     whenIdle().then(() => window.location.reload());
   },
 });
+
+// free space left by the removed AI test page, once, a little after start-up
+setTimeout(() => void cleanupLabStorage(), 5000);
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

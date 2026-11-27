@@ -1,6 +1,6 @@
 // The prompt for written answers: the Ask search's exact answer (if any) and best passages,
-// trimmed to the sentences around the match, plus instructions. Shared by the native app's
-// "Write an answer" (Apple's on-device model) and the web test page (#/lab).
+// trimmed to the sentences around the match, plus instructions. Used by the native app's
+// written answers (Apple's on-device model or a downloaded open model).
 import { ask, type Passage } from './engine';
 import { directAnswer, type Direct } from './direct';
 import { highlight, keyTerms, termsIn, textOf } from './highlight';

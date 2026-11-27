@@ -13,8 +13,6 @@ import { BookEntryView, BookTocView } from './views/BookViews';
 import SavedView from './views/SavedView';
 import AboutView from './views/AboutView';
 import AskView from './views/AskView';
-import { lazy, Suspense } from 'react';
-const LabView = lazy(() => import('./views/LabView'));
 
 const TABS = [
   { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') || p.startsWith('/ask') },
@@ -70,13 +68,6 @@ export default function App() {
       break;
     case 'ask':
       view = <AskView route={route} />;
-      break;
-    case 'lab': // hidden test page, not linked anywhere
-      view = (
-        <Suspense fallback={null}>
-          <LabView />
-        </Suspense>
-      );
       break;
     case 'saved':
       view = <SavedView />;
