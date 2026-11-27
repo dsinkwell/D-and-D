@@ -321,4 +321,10 @@ export const QUESTIONS: QualityQuestion[] = [
   { id: 'fr-deity-conversion', q: 'Which Forgotten Realms deity replaces Boccob?', topic: 'realms', needs: ['books'], prompt: ['Azuth'] },
   { id: 'fr-arachne-church', q: 'Which church does the arachne prestige class serve?', topic: 'realms', needs: ['books'], prompt: ['Lolth'] },
   { id: 'tbl-not-a-table', q: 'What is a longsword?', topic: 'equipment', sources: ['Longsword', 'Weapons', 'Weapon Descriptions', 'Martial Weapons'] },
+
+  // ---------------------------------------------------------------- Forgotten Realms book tables (step 2b):
+  // values read from the printed tables (FRCS Tables 3–3 Mundane Items, 3–5 Weapons), not from app output
+  { id: 'fr-tbl-talis-deck', q: 'how much does a talis deck cost', topic: 'equipment', needs: ['books'], direct: '\\b2 gp' },
+  { id: 'fr-tbl-chakram-range', q: 'range increment of a chakram', topic: 'equipment', needs: ['books'], direct: '30 ft' },
+  { id: 'fr-tbl-khopesh-damage', q: 'damage of a khopesh', topic: 'equipment', needs: ['books'], direct: '1d8' },
 ];

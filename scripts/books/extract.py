@@ -389,6 +389,14 @@ def is_table_line(line, body_size):
     return gaps >= 1 and small
 
 
+def rows_follow(lines, li, body_size, look=4):
+    """Whether the lines just under a caption are already read as table rows. The first line is
+    often a column-heading line that never looks like a row (PHB class tables, CAdv's Ninja), so
+    look a few lines down: rebuilding such a table from word positions merged whole columns into
+    one cell, while the ordinary table path reads it correctly."""
+    return any(is_table_line(l, body_size) for l in lines[li + 1:li + 1 + look])
+
+
 def split_cells(line):
     cells, cur, last_x1 = [], [], None
     for s in line['spans']:
@@ -627,7 +635,7 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 skip_until = li + used - 1
                 prev_bottom = lines[skip_until]['bbox'][3]
                 # a bookmarked table caption ("Table 2-1: Sample Ranks of Faerûn"): read the table under it
-                if any(is_caption_title(title) for _, title, _ in pending[li]) and skip_until + 1 < len(lines) and not is_table_line(lines[skip_until + 1], body_size):
+                if any(is_caption_title(title) for _, title, _ in pending[li]) and skip_until + 1 < len(lines) and not rows_follow(lines, skip_until, body_size):
                     got = caption_table(lines, skip_until, W, body_size, levels)
                     if got:
                         rows, used_lines = got
@@ -649,7 +657,7 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 prev_bottom = y1
                 # books whose tables are set in body fonts: rebuild the table under the caption
                 # from word positions, when the lines that follow aren't recognised as table rows
-                if is_caption_title(text) and li + 1 < len(lines) and not is_table_line(lines[li + 1], body_size):
+                if is_caption_title(text) and li + 1 < len(lines) and not rows_follow(lines, li, body_size):
                     got = caption_table(lines, li, W, body_size, levels)
                     if got:
                         rows, used_lines = got
@@ -1134,8 +1142,11 @@ def place_bookmarks(pages, toc, levels, page_offset=0):
                 r2 = difflib.SequenceMatcher(None, nt, (t + texts[li + 1])[:len(nt) + 6]).ratio()
             r, n = (r2, 2) if r2 > r1 + 0.05 else (r1, 1)
             # a short title starting a heading line ("dodge" → "dodgegeneral" from "DODGE [GENERAL]"):
-            # the ratio alone (0.62 for Dodge) misses it, and "track" matched "stack." instead
-            if t == nt or (t.startswith(nt) and styles[li] in levels):
+            # the ratio alone (0.62 for Dodge) misses it, and "track" matched "stack." instead.
+            # The title must end at a word boundary in the printed line: MM2's letter bookmark "A"
+            # otherwise took the "ABEIL" heading line, pushing every letter's first monster off its stats.
+            if t == nt or (len(nt) >= 3 and t.startswith(nt) and styles[li] in levels
+                           and re.match(r'\W*' + re.escape(title.strip()) + r'(?![^\W\d_])', lines[li]['text'], re.I)):
                 r, n = max(r, 0.95), 1
             if r < 0.66:
                 continue
