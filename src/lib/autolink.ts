@@ -19,6 +19,7 @@ type LinkKind = 'spell' | 'feat' | 'skill' | 'condition' | 'item';
 
 interface Target {
   kind: LinkKind;
+  needsContext?: boolean; // a feat that shares its name with a rules section ("Damage Reduction")
   href: string;
   title: string;
   words: string[]; // lower-case words of the name
@@ -39,7 +40,15 @@ const CONDITIONS = new Set([
 ]);
 
 // Feat titles that are really section headings in some books.
-const NOT_FEATS = /^(benefit|normal|special|prerequisites?|feats?|general|metamagic|item creation|fighter bonus feats?|regional|divine|epic|tactical|.* feats)$/i;
+const NOT_FEATS = /^(benefit|normal|special|prerequisites?|feats?|general|metamagic|item creation|fighter bonus feats?|regional|divine|epic|tactical|magic|.* feats)$/i;
+
+// Spell names that are also school names or name parts ("divination spells", "begins with greater")
+// are never linked; "symbol" only in italics.
+const NOT_SPELLS = /^(abjuration|conjuration|divination|enchantment|evocation|illusion|necromancy|transmutation|greater|lesser|mass)$/i;
+const ITALIC_ONLY_SPELLS = /^symbol$/i;
+
+// Epic feats named after special abilities: linked only in a feat list or before "feat".
+const ABILITY_NAMES = /^(damage reduction|energy resistance|fast healing|spell resistance|frightful presence|trample|regeneration|blindsight|improved spell resistance)$/i;
 
 const WORD = /[A-Za-z][A-Za-z'’-]*/g;
 const SMALL = new Set(['of', 'the', 'and', 'or', 'a', 'an', 'to', 'in', 'on', 'with', 'for', 'from', 'by', 'at']);
@@ -68,17 +77,22 @@ export function linkIndex(): Promise<LinkIndex> {
 async function build(): Promise<LinkIndex> {
   const italic = new Map<string, Target>();
   const byFirst = new Map<string, Target[]>();
-  for (const [cat, kind] of LINK_KINDS) {
-    const items = await catalog(cat).catch(() => []);
+  const lists = await Promise.all(LINK_KINDS.map(([cat]) => catalog(cat).catch(() => [])));
+  // a "feat" with a skill's or condition's name is a junk heading in some book
+  const otherNames = new Set([...lists[2], ...lists[3]].map((it) => nameKey(it.title)));
+  for (const [n, [, kind]] of LINK_KINDS.entries()) {
+    const items = lists[n];
     for (const it of items) {
       const href = it.sources[0]?.href;
       if (!href) continue;
       const title = it.title.replace(/\s*\[[^\]]*\]\s*$/, '').trim();
       if (kind === 'condition' && !CONDITIONS.has(title.toLowerCase())) continue;
-      if (kind === 'feat' && (NOT_FEATS.test(title) || title.length < 3)) continue;
+      if (kind === 'spell' && NOT_SPELLS.test(title)) continue;
+      if (kind === 'feat' && (NOT_FEATS.test(title) || title.length < 3 || otherNames.has(nameKey(title)))) continue;
       // book titles in capitals or with stray characters are not names worth matching
       if (!/^[A-Za-z][A-Za-z'’ ,()-]*[A-Za-z)]$/.test(title)) continue;
       const t: Target = { kind, href, title, words: (title.toLowerCase().match(WORD) || []).map(normWord) };
+      if (kind === 'feat' && ABILITY_NAMES.test(title)) t.needsContext = true;
       if (!t.words.length) continue;
       if (kind === 'spell' || kind === 'item') {
         const k = nameKey(title);
@@ -118,16 +132,21 @@ const SKILL_CONTEXT = /^\s*(skills?|class skills?|skills and feats|requirements?
 
 function allowed(t: Target, text: string, end: number, start: number, matched: string[], block: string): boolean {
   const after = text.slice(end, end + 24);
-  const before = text.slice(Math.max(0, start - 16), start);
+  const before = text.slice(Math.max(0, start - 40), start);
   switch (t.kind) {
     case 'condition':
       return true;
     case 'spell':
       // non-italic spell names only when written as "the fireball spell"
+      if (matched.length === 1 && ITALIC_ONLY_SPELLS.test(matched[0])) return false;
       return /^\s+spells?\b/i.test(after) && (titleCase(matched) || matched.every((w) => w === w.toLowerCase()));
     case 'feat':
       if (!titleCase(matched)) return false;
-      if (matched.length > 1) return true;
+      // "Damage Reduction:", "Energy Resistance (Ex)", "Fast Healing 3" are special abilities
+      if (/^\s*(:|\((Ex|Su|Sp)\)|\d)/.test(after)) return false;
+      // part of a longer name ("the Forest Communion of the Crescent Moon")
+      if (/[^.!?:;\s]\s+[A-Z][a-z’']+\s+(of\s+the|of|the)\s+$/.test(before)) return false;
+      if (matched.length > 1 && !t.needsContext) return true;
       return /^\s+feats?\b/i.test(after) || FEAT_CONTEXT.test(block);
     case 'skill':
       if (!titleCase(matched)) return false;
@@ -200,8 +219,19 @@ export function autolink(html: string, idx: LinkIndex, opts: AutolinkOptions = {
     // one-word items ("charming", "ghost touch") are too often ordinary words in italics
     if (!t || isSelf(t, em) || (t.kind === 'item' && t.words.length < 2)) continue;
     const a = makeLink(t, '');
-    while (em.firstChild) a.appendChild(em.firstChild);
-    em.appendChild(a);
+    const only = em.childNodes.length === 1 && em.firstChild?.nodeType === 3 ? (em.firstChild as Text).data : null;
+    const m = only?.match(/^(\s*)(.*?)([\s.,;:]*)$/s);
+    if (m) {
+      // keep surrounding spaces and punctuation outside the underline
+      a.textContent = m[2];
+      em.textContent = '';
+      if (m[1]) em.appendChild(doc.createTextNode(m[1]));
+      em.appendChild(a);
+      if (m[3]) em.appendChild(doc.createTextNode(m[3]));
+    } else {
+      while (em.firstChild) a.appendChild(em.firstChild);
+      em.appendChild(a);
+    }
   }
 
   // 2. Plain text.
@@ -234,6 +264,8 @@ export function autolink(html: string, idx: LinkIndex, opts: AutolinkOptions = {
         if (!ok) continue;
         const start = words[i].start;
         const end = words[i + n - 1].end;
+        // whole words only ("light" is not a name inside "low-light" or "lowlight")
+        if (/[A-Za-z\u00AD-]$/.test(text.slice(0, start)) || /^[A-Za-z\u00AD]/.test(text.slice(end))) continue;
         const matched = words.slice(i, i + n).map((x) => x.w);
         if (!allowed(t, text, end, start, matched, blockText)) continue;
         if (isSelf(t, node)) break;
