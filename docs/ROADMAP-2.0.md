@@ -54,6 +54,12 @@ The original brainstorm is kept below the decisions.
   wizard spellbook, prepared slots with "cast" ticks, spontaneous casters' slot dots and spells known;
   "New day"; "Add to a character…" on every spell page. Stored in the new user-data store (`src/lib/userdata.ts`,
   IndexedDB `rc-user`: id, type, updated, tombstones, origin — ready for sharing files and iCloud sync).
+- Done (step 3b–d): lists (`src/views/ListViews.tsx`, "Add to a list…" on every page, quantities and notes);
+  homebrew entries (`src/lib/homebrew.ts`, `src/views/HomebrewViews.tsx`: any kind, stat lines + text, aliases,
+  "Replaces"), merged into the catalog, search, tap-to-link, spellbooks and Ask (house rules marked as overriding
+  the printed rules); house-rules switch ("Show rules as written"); "House rule: replaced by X" banner on the
+  printed entries; the five skills drafted from the SRD + the decisions (`src/lib/houserules.ts`, class-skill
+  lists computed from the SRD classes), marked Draft until the DM saves them.
 - **Open (needs the PDFs again):** 10 books have their tables flattened into text by the extraction
   (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u), so they have no readable tables yet.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).

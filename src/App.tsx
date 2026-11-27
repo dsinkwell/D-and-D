@@ -16,13 +16,14 @@ import AskView from './views/AskView';
 import DiceTray from './DiceTray';
 import { CharacterView, CharactersView } from './views/CharacterViews';
 import { ListView } from './views/ListViews';
+import { HomebrewEdit, HomebrewView } from './views/HomebrewViews';
 
 const TABS = [
   { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') || p.startsWith('/ask') },
   { id: 'rules', label: 'Rules', href: '#/rules', match: (p: string) => p.startsWith('/rules') || p.startsWith('/srd') },
   { id: 'realms', label: 'Realms', href: '#/wiki', match: (p: string) => p.startsWith('/wiki') },
   { id: 'library', label: 'Books', href: '#/library', match: (p: string) => p.startsWith('/library') || p.startsWith('/book') },
-  { id: 'saved', label: 'Saved', href: '#/saved', match: (p: string) => p.startsWith('/saved') || p.startsWith('/character') || p.startsWith('/list') },
+  { id: 'saved', label: 'Saved', href: '#/saved', match: (p: string) => p.startsWith('/saved') || p.startsWith('/character') || p.startsWith('/list') || p.startsWith('/homebrew') },
 ];
 
 export default function App() {
@@ -83,6 +84,9 @@ export default function App() {
       break;
     case 'list':
       view = <ListView id={rest[0]} />;
+      break;
+    case 'homebrew':
+      view = rest[0] === 'new' || rest[1] === 'edit' ? <HomebrewEdit id={rest[0]} route={route} /> : <HomebrewView id={rest[0]} />;
       break;
     case 'about':
       view = <AboutView />;

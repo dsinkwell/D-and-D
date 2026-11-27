@@ -2705,3 +2705,54 @@ input.num {
   background: var(--surface);
   font-size: 14px;
 }
+
+/* ---------------------------------------------------------------- homebrew & house rules */
+.house-banner {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 15px;
+}
+.house-banner.off {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.switch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+}
+.hb-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hb-field {
+  display: grid;
+  grid-template-columns: minmax(90px, 32%) 1fr;
+  gap: 6px;
+}
+.hb-field input,
+.hb-text input,
+.hb-text textarea {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  width: 100%;
+  font: inherit;
+}
+.hb-label {
+  font-weight: 600;
+}
+.hb-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.row-title .pill {
+  margin-left: 6px;
+}

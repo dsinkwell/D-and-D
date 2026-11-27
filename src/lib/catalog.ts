@@ -2,6 +2,8 @@
 // feat or monster that appears in several places is one row with several sources.
 import { BookEntry, BookInfo, BookKind, bookEntryHref, booksReady, entriesOfKind, listBuiltInBooks } from './books';
 import { Category, Entry, entryHref, loadEntries } from './srd';
+import { allHomebrew, homebrewHref, houseRulesOn, type HomebrewRecord } from './homebrew';
+import { onTypeChanged } from './userdata';
 
 export interface Source {
   label: string; // "PHB p. 232" or "SRD"
@@ -11,6 +13,7 @@ export interface Source {
   page?: number;
   edition: string; // "3.5" | "3.0"
   srd?: boolean;
+  homebrew?: boolean;
 }
 
 export interface CatalogItem {
@@ -53,6 +56,7 @@ const spellClass = (k: string) => {
 };
 
 function sourceRank(s: Source) {
+  if (s.homebrew) return -1; // the group's own version first
   return s.edition === '3.5' && !s.srd ? 0 : s.srd ? 1 : 2;
 }
 
@@ -66,6 +70,9 @@ export function resetCatalog() {
   cache.clear();
   generation++;
 }
+
+onTypeChanged('homebrew', () => resetCatalog());
+if (typeof window !== 'undefined') window.addEventListener('rc-houserules', () => resetCatalog());
 
 export function catalog(kind: Category): Promise<CatalogItem[]> {
   if (!cache.has(kind)) {
@@ -106,10 +113,18 @@ async function build(kind: Category): Promise<CatalogItem[]> {
     }
   }
 
+  // homebrew entries of this kind, and the printed entries they replace (house rules)
+  const brew = (await allHomebrew()).filter((r) => r.data.kind === kind);
+  for (const r of brew) addHomebrew(get(r.name), r);
+  const replaced = new Map<string, string>();
+  if (houseRulesOn()) for (const r of await allHomebrew()) for (const x of r.data.replaces || []) replaced.set(nameKey(x), r.name);
+
   const out = [...items.values()];
   for (const it of out) {
     it.sources.sort((a, b) => sourceRank(a) - sourceRank(b));
     it.extra = metaLine(it);
+    const by = replaced.get(it.key);
+    if (by && !it.sources.some((s) => s.homebrew)) it.extra = `House rule: replaced by ${by}${it.extra ? ` · ${it.extra}` : ''}`;
   }
   return out.sort((a, b) => a.title.localeCompare(b.title));
 }
@@ -126,6 +141,19 @@ function addSrd(it: CatalogItem, e: Entry) {
   it.price ??= m.price;
   it.itemKind ??= m.kind ? itemKindName(m.kind) : undefined;
   it.discipline ??= m.Discipline?.replace(/\s*\(.*$/, '').trim();
+}
+
+function addHomebrew(it: CatalogItem, r: HomebrewRecord) {
+  const f = Object.fromEntries(r.data.fields.map(([k, v]) => [k.toLowerCase(), v]));
+  it.sources.push({ label: 'Homebrew', short: 'Homebrew', href: homebrewHref(r.id), edition: '3.5', homebrew: true });
+  it.summary ??= r.data.text.split(/(?<=[.!?])\s/)[0]?.slice(0, 200);
+  // "Sor/Wiz 2, Clr 3" → spell levels (so homebrew spells appear in spellbooks)
+  for (const m of (f.level || '').matchAll(/([A-Za-z/ ]+?)\s+(\d)\b/g)) it.lv[spellClass(m[1])] ??= Number(m[2]);
+  if (f.school) it.school ??= f.school.replace(/\s*[[(].*$/, '').trim();
+  if (f.type && it.kind === 'feat') it.ftype = mergeTypes(it.ftype, f.type);
+  if (f['challenge rating'] || f.cr) it.cr ??= f['challenge rating'] || f.cr;
+  if (f.price || f['market price']) it.price ??= f.price || f['market price'];
+  if (f.portfolio) it.portfolio ??= f.portfolio;
 }
 
 function addBook(it: CatalogItem, e: BookEntry, b: BookInfo) {
@@ -259,9 +287,25 @@ export async function searchRules(q: string, limit = 80): Promise<CatalogItem[]>
     r.rank = Math.min(r.rank, i);
   });
 
+  // homebrew: by name, other names and the printed names it replaces ("Hide" finds Stealth)
+  const hon = houseRulesOn();
+  for (const h of await allHomebrew()) {
+    const names = [h.name, ...(h.data.aliases || []), ...(hon ? h.data.replaces || [] : [])].map(nameKey);
+    const byName = names.some((n) => n === lower || n.startsWith(lower) || (words.length && words.every((w) => n.split(' ').includes(w))));
+    const inText = !byName && words.length > 0 && words.every((w) => nameKey(h.data.text).includes(w));
+    if (!byName && !inText) continue;
+    const kind = h.data.kind === 'rule' ? 'rule' : h.data.kind;
+    const r = rowFor(kind, h.name, `hb:${h.id}`);
+    addHomebrew(r, h);
+    r.rank = Math.min(r.rank, byName ? -1 : 50);
+    if (names.slice(1).some((n) => n === lower)) (r as Row & { alias?: boolean }).alias = true; // found by an alias or replaced name
+  }
+
   for (const r of rows.values()) {
     const t = nameKey(r.title);
-    let s = t === lower ? 4 : t.startsWith(lower) ? 3 : words.every((w) => t.split(' ').includes(w)) ? 2 : words.some((w) => t.includes(w)) ? 1 : 0;
+    const hb = r.sources.some((x) => x.homebrew) ? 0.5 : 0; // the group's own entries first among equals
+    const exact = t === lower || (r as Row & { alias?: boolean }).alias;
+    let s = hb + (exact ? 4 : t.startsWith(lower) ? 3 : words.every((w) => t.split(' ').includes(w)) ? 2 : words.some((w) => t.includes(w)) ? 1 : 0);
     if (r.kind !== 'rule') s += 0.6;
     else if (GENERIC.test(r.title)) s -= 1;
     r.score = s;

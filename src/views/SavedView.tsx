@@ -3,6 +3,7 @@ import { Header, Notice, SourceBadge, StarToggle } from '../components';
 import { clearHistory, getHistory, Mark, setBookmarks, useBookmarks } from '../lib/bookmarks';
 import { useRecords } from '../lib/userdata';
 import { ListsSection } from './ListViews';
+import { HomebrewSection } from './HomebrewViews';
 import { className, type Character } from '../lib/characters';
 
 /** Characters (spellbooks) at the top of Saved. */
@@ -123,6 +124,7 @@ export default function SavedView() {
       {msg && <Notice>{msg}</Notice>}
       <CharactersShortcut />
       <ListsSection />
+      <HomebrewSection />
       {!marks.length && <p className="muted">Tap the ☆ next to any spell, feat, monster, item, book section or wiki article to save it here. Use Export/Import to copy bookmarks between your devices.</p>}
       {marks.length > 0 && (
         <div className="filters">

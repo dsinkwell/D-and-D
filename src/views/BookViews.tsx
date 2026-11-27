@@ -22,6 +22,7 @@ import { OfflineDataCard } from '../OfflineData';
 import { useAutolinked } from '../lib/autolink';
 import { AddSpellToCharacter } from './CharacterViews';
 import { AddToList } from './ListViews';
+import { ReplacedBanner } from './HomebrewViews';
 
 const PASS_KEY = 'rc.books.pass.hint';
 
@@ -245,6 +246,7 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
         </div>
         {isRef && facts.length > 0 && <div className="entry-source">{facts.join(' · ')}</div>}
       </div>
+      <ReplacedBanner title={entry.title} />
       <div className="entry-adds">
         {entry.kind === 'spell' && <AddSpellToCharacter title={entry.title} />}
         <AddToList item={{ key: mark.key, title: entry.title, href: mark.href, subtitle: mark.subtitle }} />

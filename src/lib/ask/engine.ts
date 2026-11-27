@@ -6,6 +6,7 @@ import { catalog, catalogGeneration, searchRules } from '../catalog';
 import { offlineSearch } from '../wikiOffline';
 import { wikiHref } from '../router';
 import { keywords, textOf } from './highlight';
+import { allHomebrew, getHomebrew, homebrewHref, homebrewHtml, houseRulesOn } from '../homebrew';
 import { isNative } from '../platform';
 
 export type AskSource = 'srd' | 'books' | 'wiki';
@@ -276,7 +277,7 @@ export async function ask(q: string, limit = 8): Promise<AskResult> {
   // keyword hits: rules & books catalog rows
   kw.forEach((it, rank) => {
     const href = it.sources[0].href;
-    const key = it.sources[0].srd ? `srdh:${href}` : `bkh:${href}`;
+    const key = it.sources[0].srd || it.sources[0].homebrew ? `srdh:${href}` : `bkh:${href}`;
     add(key, rank, () => passageAt(href, key));
   });
   // entries the question names outright ("What does the Power Attack feat do?", "the Hide
@@ -316,6 +317,11 @@ export async function ask(q: string, limit = 8): Promise<AskResult> {
 
 /** Passage for an SRD or book entry link (its opening blocks). */
 export async function passageAt(href: string, key: string): Promise<Passage | null> {
+  if (href.startsWith('#/homebrew/')) {
+    const r = getHomebrew(href.slice('#/homebrew/'.length));
+    if (!r) return null;
+    return { key, source: 'srd', title: r.name, kind: r.data.kind, label: 'Homebrew', href, html: homebrewHtml(r.data), score: 0 };
+  }
   if (href.startsWith('#/srd/e/')) {
     const e = await getEntry(href.replace(/^#\/srd\/e\//, ''));
     if (!e) return null;
@@ -360,6 +366,8 @@ function nameMap(): Promise<Map<string, Named>> {
       const m = plain.match(/^(.+?),\s*(greater|lesser|mass|improved|superior|swift|quickened)$/i);
       for (const k of [norm(plain), ...(m ? [norm(`${m[2]} ${m[1]}`)] : [])]) if (k.length >= 3 && !map.has(k) && !GENERIC_NAMES.has(k)) map.set(k, { title, kind, href });
     };
+    // the group's homebrew first, by its name, other names and (house rules on) the names it replaces
+    for (const r of await allHomebrew()) for (const n of [r.name, ...(r.data.aliases || []), ...(houseRulesOn() ? r.data.replaces || [] : [])]) put(n, r.data.kind, homebrewHref(r.id));
     for (const kind of NAME_KINDS) {
       // SRD rules sections ("Flanking", "Spell Resistance", "Aid Another")
       if (kind === 'rule') {

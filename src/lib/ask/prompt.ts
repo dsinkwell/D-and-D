@@ -6,6 +6,7 @@ import { directAnswer, type Direct } from './direct';
 import { highlight, keyTerms, termsIn, textOf } from './highlight';
 import { query } from '../db';
 import { catalog, nameKey } from '../catalog';
+import { homebrewHref, homebrewHtml, homebrewIn } from '../homebrew';
 
 export const INSTRUCTIONS = [
   'You answer questions about the Dungeons & Dragons 3.5 rules and the Forgotten Realms, using only the sources you are given.',
@@ -14,6 +15,7 @@ export const INSTRUCTIONS = [
   'Use only the sources that address the question and ignore the others. Do not add facts the question did not ask about.',
   'Write 2 to 4 plain sentences. Cite the source you used in brackets, like [PHB p. 57].',
   'If the sources do not answer the question, say so instead of guessing.',
+  'Sources marked House rule or Homebrew are the group’s own rules: they override the printed rules.',
 ].join(' ');
 
 export interface BuiltPrompt {
@@ -151,6 +153,13 @@ export async function promptFrom(q: string, direct: Direct | null, passages: Pas
       if (rows[0]?.summary) text = rows[0].summary.slice(0, excerpt);
     }
     lines.push(`[${direct.source}] ${direct.title}: ${text}`);
+  }
+  // the group's house rules / homebrew named in the question come first
+  const brew = await homebrewIn(q).catch(() => []);
+  for (const r of brew.slice(0, 2)) {
+    if (sources.some((p) => p.href === homebrewHref(r.id))) continue;
+    const ex = textOf(highlight(homebrewHtml(r.data), q, Math.round(excerpt * 0.75), r.name, true).excerpt.replace(/<\/?mark>/g, ''));
+    lines.push(`[${r.data.replaces?.length ? 'House rule' : 'Homebrew'}] ${r.name}${r.data.replaces?.length ? ` (replaces ${r.data.replaces.join(', ')})` : ''}: ${ex}`);
   }
   sources.forEach((p, i) => {
     // the best match gets the most room: it usually holds the deciding sentence

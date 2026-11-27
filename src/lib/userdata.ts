@@ -32,6 +32,12 @@ const emit = () => {
   version++;
   subs.forEach((f) => f());
 };
+const typeListeners = new Map<RecordType, Set<() => void>>();
+/** Run `f` whenever a record of this type is saved or deleted (e.g. the catalog re-reads homebrew). */
+export function onTypeChanged(type: RecordType, f: () => void) {
+  if (!typeListeners.has(type)) typeListeners.set(type, new Set());
+  typeListeners.get(type)!.add(f);
+}
 
 export function loadUserData(): Promise<void> {
   loaded ??= entries<string, UserRecord>(store)
@@ -63,6 +69,7 @@ export async function saveRecord<T>(r: Omit<UserRecord<T>, 'updated' | 'created'
   const now = Date.now();
   const full: UserRecord<T> = { ...r, created: r.created ?? records.get(r.id)?.created ?? now, updated: now };
   records.set(full.id, full);
+  typeListeners.get(full.type)?.forEach((f) => f());
   emit();
   await idbSet(full.id, full, store).catch(() => {});
   return full;
