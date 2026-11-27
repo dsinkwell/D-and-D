@@ -47,6 +47,13 @@ The original brainstorm is kept below the decisions.
   headings, "Horse, heavy/light", "composite longbow", masterwork (+300 gp weapon / +150 gp armor), Medium
   columns, roll-range misalignment; random-roll tables rank last. Quality test 113/114 (the failure: "What
   is a longsword?" — weapon descriptions are not separate entries).
+- Done (step 3a): characters with spellbooks (`src/lib/characters.ts`, `src/views/CharacterViews.tsx`, Saved →
+  Characters, `#/characters`, `#/character/<id>`): spells per day from the SRD class tables
+  (`scripts/build-spellcasting.mjs` → `public/srd/spellcasting.json`, checked against the PHB) + bonus spells
+  from the key ability, cleric domain slots, "Other" classes with typed-in slots, several classes per character;
+  wizard spellbook, prepared slots with "cast" ticks, spontaneous casters' slot dots and spells known;
+  "New day"; "Add to a character…" on every spell page. Stored in the new user-data store (`src/lib/userdata.ts`,
+  IndexedDB `rc-user`: id, type, updated, tombstones, origin — ready for sharing files and iCloud sync).
 - **Open (needs the PDFs again):** 10 books have their tables flattened into text by the extraction
   (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u), so they have no readable tables yet.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).

@@ -1,6 +1,37 @@
 import { useMemo, useRef, useState } from 'react';
 import { Header, Notice, SourceBadge, StarToggle } from '../components';
 import { clearHistory, getHistory, Mark, setBookmarks, useBookmarks } from '../lib/bookmarks';
+import { useRecords } from '../lib/userdata';
+import { className, type Character } from '../lib/characters';
+
+/** Characters (spellbooks) at the top of Saved. */
+function CharactersShortcut() {
+  const chars = useRecords<Character>('character');
+  return (
+    <section>
+      <h2 className="section-bar">Characters</h2>
+      <ul className="list">
+        {chars.map((c) => (
+          <li key={c.id}>
+            <a className="row" href={`#/character/${c.id}`}>
+              <div className="row-main">
+                <div className="row-title">{c.name}</div>
+                <div className="muted small">{c.data.classes.map((k) => `${className(k)} ${k.level}`).join(' / ')}</div>
+              </div>
+            </a>
+          </li>
+        ))}
+        <li>
+          <a className="row" href="#/characters">
+            <div className="row-main">
+              <div className="row-title">{chars.length ? 'All characters / new character…' : 'New character (spellbook, spells per day)…'}</div>
+            </div>
+          </a>
+        </li>
+      </ul>
+    </section>
+  );
+}
 
 // Bookmarks are grouped by what they are, in this order.
 const GROUPS: [string, string][] = [
@@ -89,6 +120,7 @@ export default function SavedView() {
         }
       />
       {msg && <Notice>{msg}</Notice>}
+      <CharactersShortcut />
       {!marks.length && <p className="muted">Tap the ☆ next to any spell, feat, monster, item, book section or wiki article to save it here. Use Export/Import to copy bookmarks between your devices.</p>}
       {marks.length > 0 && (
         <div className="filters">

@@ -4,12 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build:srd": "node scripts/build-srd.mjs",
+    "build:srd": "node scripts/build-srd.mjs && node scripts/build-spellcasting.mjs",
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview",
-    "prebuild": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs && node scripts/fetch-models.mjs",
-    "predev": "node scripts/build-srd.mjs && node scripts/copy-ort.mjs",
+    "prebuild": "node scripts/build-srd.mjs && node scripts/build-spellcasting.mjs && node scripts/copy-ort.mjs && node scripts/fetch-models.mjs",
+    "predev": "node scripts/build-srd.mjs && node scripts/build-spellcasting.mjs && node scripts/copy-ort.mjs",
     "fetch:models": "node scripts/fetch-models.mjs"
   },
   "dependencies": {

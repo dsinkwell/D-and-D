@@ -20,6 +20,7 @@ import { catalog, nameKey, resetCatalog, Source } from '../lib/catalog';
 import { Category } from '../lib/srd';
 import { OfflineDataCard } from '../OfflineData';
 import { useAutolinked } from '../lib/autolink';
+import { AddSpellToCharacter } from './CharacterViews';
 
 const PASS_KEY = 'rc.books.pass.hint';
 
@@ -243,6 +244,7 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
         </div>
         {isRef && facts.length > 0 && <div className="entry-source">{facts.join(' · ')}</div>}
       </div>
+      {entry.kind === 'spell' && <AddSpellToCharacter title={entry.title} />}
       {also.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">Also in:</span>

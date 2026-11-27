@@ -24,7 +24,7 @@ interface Index {
   rows: Map<string, [number, number, boolean][]>; // row name → [table, row, exact name (not just the part before a comma)]
 }
 
-const VERSION = 6; // (index format; answering changes need no bump) // bump when the parsing below changes
+const VERSION = 7; // bump when the index format or the parsing below changes (answering changes need no bump)
 const CORE = new Set(['phb', 'dmg', 'mm']);
 
 export const norm = (t: string) =>
@@ -152,7 +152,7 @@ function cellsOf(tr: Element): { text: string; th: boolean }[] {
   const out: { text: string; th: boolean }[] = [];
   for (const c of Array.from(tr.children)) {
     const span = Math.min(12, Number(c.getAttribute('colspan')) || 1);
-    const text = textOf(c.innerHTML);
+    const text = textOf(c.innerHTML.replace(/<sup>[\s\S]*?<\/sup>/gi, '')); // footnote marks ("2<sup>1</sup>")
     for (let k = 0; k < span; k++) out.push({ text, th: c.tagName === 'TH' });
   }
   return out;

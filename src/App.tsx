@@ -14,13 +14,14 @@ import SavedView from './views/SavedView';
 import AboutView from './views/AboutView';
 import AskView from './views/AskView';
 import DiceTray from './DiceTray';
+import { CharacterView, CharactersView } from './views/CharacterViews';
 
 const TABS = [
   { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') || p.startsWith('/ask') },
   { id: 'rules', label: 'Rules', href: '#/rules', match: (p: string) => p.startsWith('/rules') || p.startsWith('/srd') },
   { id: 'realms', label: 'Realms', href: '#/wiki', match: (p: string) => p.startsWith('/wiki') },
   { id: 'library', label: 'Books', href: '#/library', match: (p: string) => p.startsWith('/library') || p.startsWith('/book') },
-  { id: 'saved', label: 'Saved', href: '#/saved', match: (p: string) => p.startsWith('/saved') },
+  { id: 'saved', label: 'Saved', href: '#/saved', match: (p: string) => p.startsWith('/saved') || p.startsWith('/character') },
 ];
 
 export default function App() {
@@ -72,6 +73,12 @@ export default function App() {
       break;
     case 'saved':
       view = <SavedView />;
+      break;
+    case 'characters':
+      view = <CharactersView />;
+      break;
+    case 'character':
+      view = <CharacterView id={rest[0]} />;
       break;
     case 'about':
       view = <AboutView />;
