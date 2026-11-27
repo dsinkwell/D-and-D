@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { Header, Loading, StarToggle } from '../components';
+import { Header, Loading, StarToggle, PinButton } from '../components';
 import { keyForHref } from '../lib/bookmarks';
 import { navigate, Route } from '../lib/router';
 import { Category, CATEGORY_LABEL, CLASS_NAMES, crValue, priceValue, SCHOOLS, SPELL_CLASSES } from '../lib/srd';
@@ -99,7 +99,11 @@ export default function CategoryView({ cat, route }: { cat: string; route: Route
 
   return (
     <div className="page">
-      <Header title={info?.label || cat} subtitle={all ? `${list.length.toLocaleString()} of ${all.length.toLocaleString()}` : undefined} />
+      <Header
+        title={info?.label || cat}
+        subtitle={all ? `${list.length.toLocaleString()} of ${all.length.toLocaleString()}` : undefined}
+        actions={<PinButton label={pinLabel(info?.label || cat, route.query)} href={`#/rules/${cat}${route.query.toString() ? `?${route.query}` : ''}`} />}
+      />
       <div className="filters">
         <input className="filter-text" type="search" placeholder={`Filter ${info?.label.toLowerCase() || ''}…`} value={text} onChange={(e) => setText(e.target.value)} autoCorrect="off" autoCapitalize="none" />
         {cat === 'spell' && (
@@ -270,4 +274,10 @@ export function CatalogRow({ item: e, badge }: { item: CatalogItem; badge?: stri
       <StarToggle mark={mark} />
     </div>
   );
+}
+
+/** Name for a pinned list, from its filters: "Spells: Clr 3 Evocation". */
+function pinLabel(label: string, q: URLSearchParams) {
+  const parts = ['class', 'level', 'school', 'type', 'src', 'q'].map((k) => q.get(k)).filter(Boolean);
+  return parts.length ? `${label}: ${parts.join(' ')}` : label;
 }

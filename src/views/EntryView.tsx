@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton } from '../components';
+import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton, PinButton } from '../components';
 import { formatEntry } from '../lib/statblock';
 import { recordVisit } from '../lib/bookmarks';
 import { CATEGORY_LABEL, Doc, Entry, getEntry, loadDoc } from '../lib/srd';
@@ -77,6 +77,7 @@ export default function EntryView({ id }: { id: string }) {
               <Icon name="chapter" />
             </a>
             <BookmarkButton mark={{ key: `srd:${entry.i}`, source: 'srd', title: entry.t, subtitle: `${label} · SRD`, href: `#/srd/e/${entry.i}`, kind: entry.c }} />
+            <PinButton label={entry.t} href={`#/srd/e/${entry.i}`} />
             <ShareButton title={entry.t} />
           </>
         }

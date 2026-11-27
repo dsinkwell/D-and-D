@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
+import { isPinned, onShortcutsChanged, pin, unpin } from './lib/shortcuts';
 import { Mark, toggleBookmark, useIsBookmarked } from './lib/bookmarks';
 
 export function Header({ title, subtitle, back = true, actions }: { title: ReactNode; subtitle?: ReactNode; back?: boolean; actions?: ReactNode }) {
@@ -111,6 +112,10 @@ const PATHS: Record<string, string> = {
   share: 'M12 2.6 16.7 7.3l-1.4 1.4L13 6.4V15h-2V6.4L8.7 8.7 7.3 7.3 12 2.6zM5 11h3v2H6v7h12v-7h-2v-2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z',
   ask: 'M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-7.6L7 22v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v11h5v2.3L11.8 16H20V5H4zm7.2 7.6h1.7v1.7h-1.7v-1.7zM12 6.3c1.7 0 3 1.1 3 2.6 0 1.1-.7 1.7-1.3 2.1-.5.3-.8.6-.8 1.1h-1.7c0-1.1.6-1.7 1.2-2.1.5-.3.9-.6.9-1.1 0-.5-.6-1-1.3-1-.8 0-1.3.5-1.4 1.1H8.9c.1-1.6 1.4-2.7 3.1-2.7z',
   settings: 'M10.3 2h3.4l.5 2.6a8 8 0 0 1 1.9 1.1l2.5-.9 1.7 2.9-2 1.8a8 8 0 0 1 0 2.2l2 1.8-1.7 2.9-2.5-.9a8 8 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a8 8 0 0 1-1.9-1.1l-2.5.9-1.7-2.9 2-1.8a8 8 0 0 1 0-2.2l-2-1.8 1.7-2.9 2.5.9a8 8 0 0 1 1.9-1.1l.5-2.6zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z',
+  pin: 'M14.5 2.5 21.5 9.5 20.1 10.9 18.7 10.2 15 13.9V17l-1.4 1.4-3.6-3.6L5.4 19.4 4 18l4.6-4.6L5 9.8 6.4 8.4H9.6l3.7-3.7-.7-1.4 1.9-.8zM12.2 7.2 10.4 9 9.2 10.2l4.6 4.6 1.2-1.2 1.8-1.8-4.6-4.6z',
+  'pin-filled': 'M14.5 2.5 21.5 9.5 20.1 10.9 18.7 10.2 15 13.9V17l-1.4 1.4-3.6-3.6L5.4 19.4 4 18l4.6-4.6L5 9.8 6.4 8.4H9.6l3.7-3.7-.7-1.4 1.9-.8z',
+  up: 'M12 5.6 18.4 12 17 13.4l-4-4V19h-2V9.4l-4 4L5.6 12 12 5.6z',
+  down: 'M12 18.4 5.6 12 7 10.6l4 4V5h2v9.6l4-4 1.4 1.4-6.4 6.4z',
   close: 'm6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5z',
 };
 
@@ -144,4 +149,24 @@ export function useOnline() {
     };
   }, []);
   return on;
+}
+
+/** Pin the current page to the "Jump to" buttons on the Search home (toggle). */
+export function PinButton({ label, href }: { label: string; href: string }) {
+  const [on, setOn] = useState(() => isPinned(href));
+  useEffect(() => {
+    setOn(isPinned(href));
+    return onShortcutsChanged(() => setOn(isPinned(href)));
+  }, [href]);
+  return (
+    <button
+      className={`icon-btn ${on ? 'on' : ''}`}
+      onClick={() => (on ? unpin(href) : pin({ label, href }))}
+      title={on ? 'Remove from Jump to' : 'Pin to Jump to (Search home)'}
+      aria-label={on ? 'Remove from Jump to' : 'Pin to Jump to'}
+      aria-pressed={on}
+    >
+      <Icon name={on ? 'pin-filled' : 'pin'} />
+    </button>
+  );
 }

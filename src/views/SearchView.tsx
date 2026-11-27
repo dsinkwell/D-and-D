@@ -9,6 +9,7 @@ import { OfflineDataCard } from '../OfflineData';
 import { booksReady } from '../lib/books';
 import { CatalogItem, searchRules } from '../lib/catalog';
 import { CatalogRow } from './CategoryView';
+import JumpTo from './JumpTo';
 import { askDownloaded, prepareAsk } from '../lib/ask/engine';
 
 type Scope = 'all' | 'rules' | 'books' | 'wiki';
@@ -19,18 +20,6 @@ const SCOPES: { id: Scope; label: string }[] = [
   { id: 'books', label: 'Extra PDFs' },
 ];
 
-const QUICK = [
-  { label: 'Conditions', href: '#/rules/condition' },
-  { label: 'Spells', href: '#/rules/spell' },
-  { label: 'Feats', href: '#/rules/feat' },
-  { label: 'Monsters', href: '#/rules/monster' },
-  { label: 'Magic items', href: '#/rules/item' },
-  { label: 'Combat', href: '#/srd/d/combat-i-basics' },
-  { label: 'Special attacks', href: '#/srd/d/combat-ii-movement-modifiers-and-special-actions' },
-  { label: 'Grapple', href: '#/srd/e/combat-ii-movement-modifiers-and-special-actions/grapple' },
-  { label: 'Faerûn', href: wikiHref('Faerûn') },
-  { label: 'Faerûnian pantheon', href: wikiHref('Faerûnian pantheon') },
-];
 
 export default function SearchView({ route }: { route: Route }) {
   const initialQ = route.query.get('q') || '';
@@ -168,16 +157,7 @@ export default function SearchView({ route }: { route: Route }) {
       {!query && (
         <div className="home-blocks">
           <OfflineDataCard name="wiki" compact />
-          <section>
-            <h2 className="section-title">Jump to</h2>
-            <div className="quick-grid">
-              {QUICK.map((x) => (
-                <a key={x.label} className="quick" href={x.href}>
-                  {x.label}
-                </a>
-              ))}
-            </div>
-          </section>
+          <JumpTo />
           {history.length > 0 && (
             <section>
               <h2 className="section-title">Recently viewed</h2>

@@ -1,5 +1,5 @@
 import { MouseEvent, useEffect, useRef, useState } from 'react';
-import { BookmarkButton, Header, Icon, Loading, Notice, useOnline } from '../components';
+import { BookmarkButton, Header, Icon, Loading, Notice, useOnline, PinButton } from '../components';
 import { getHistory, recordVisit } from '../lib/bookmarks';
 import { navigate, wikiHref } from '../lib/router';
 import { useDbStatus } from '../lib/db';
@@ -257,6 +257,7 @@ function WikiArticle({ title }: { title: string }) {
         }
         actions={
           <>
+            <PinButton label={textOfTitle(article.displayTitle)} href={wikiHref(article.title)} />
             <button className="icon-btn" onClick={forceRefresh} disabled={refreshing || !navigator.onLine} title="Load the latest version from the live wiki" aria-label="Load the latest version from the live wiki">
               <Icon name="refresh" />
             </button>
@@ -416,3 +417,5 @@ function WikiCategory({ title }: { title: string }) {
     </div>
   );
 }
+
+const textOfTitle = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();

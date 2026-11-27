@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton } from '../components';
+import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton, PinButton } from '../components';
 import { formatEntry } from '../lib/statblock';
 import { recordVisit } from '../lib/bookmarks';
 import {
@@ -128,7 +128,11 @@ export function BookTocView({ id }: { id: string }) {
 
   return (
     <div className="page">
-      <Header title={book.title} subtitle={`${book.shelf} · ${book.edition} · ${toc.length} sections`} />
+      <Header
+        title={book.title}
+        subtitle={`${book.shelf} · ${book.edition} · ${toc.length} sections`}
+        actions={<PinButton label={book.short || book.title} href={`#/book/${book.id}`} />}
+      />
       <div className="filters">
         <input className="filter-text" type="search" placeholder="Find in contents…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         {!filter && (
@@ -219,6 +223,7 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
         actions={
           <>
             <BookmarkButton mark={mark} />
+            <PinButton label={entry.title} href={mark.href} />
             <ShareButton title={entry.title} />
           </>
         }

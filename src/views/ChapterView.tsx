@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookmarkButton, Header, Loading, Notice } from '../components';
+import { BookmarkButton, Header, Loading, Notice, PinButton } from '../components';
 import { recordVisit } from '../lib/bookmarks';
 import { Doc, loadDoc } from '../lib/srd';
 
@@ -44,7 +44,12 @@ export default function ChapterView({ id, at }: { id: string; at?: string }) {
       <Header
         title={doc.title}
         subtitle={`${doc.group} · SRD v3.5`}
-        actions={<BookmarkButton mark={{ key: `srd:chapter:${id}`, source: 'srd', title: doc.title, subtitle: `Chapter · ${doc.group}`, href: `#/srd/d/${id}` }} />}
+        actions={
+          <>
+            <BookmarkButton mark={{ key: `srd:chapter:${id}`, source: 'srd', title: doc.title, subtitle: `Chapter · ${doc.group}`, href: `#/srd/d/${id}` }} />
+            <PinButton label={doc.title} href={`#/srd/d/${id}`} />
+          </>
+        }
       />
       {doc.toc.length > 3 && (
         <details className="toc" open={tocOpen} onToggle={(e) => setTocOpen((e.target as HTMLDetailsElement).open)}>
