@@ -9,11 +9,11 @@ import { CATEGORY_LABEL, type Category } from '../lib/srd';
 import { FIELD_PRESETS, homebrewHref, homebrewHtml, houseRulesOn, replacementFor, setHouseRulesOn, type HomebrewData, type HomebrewRecord } from '../lib/homebrew';
 import { createRecord, deleteRecord, saveRecord, useRecord, useRecords, useUserData } from '../lib/userdata';
 import { navigate, type Route } from '../lib/router';
-import { AddToList } from './ListViews';
+import { AddToList, ShareRecordsButton } from './ListViews';
 import { AddSpellToCharacter } from './CharacterViews';
 
 const KINDS: Category[] = ['spell', 'feat', 'item', 'monster', 'skill', 'rule', 'class', 'prestige', 'race', 'condition', 'deity', 'trap'];
-const isImported = (r: HomebrewRecord) => !!r.origin && r.origin !== r.id;
+const isImported = (r: HomebrewRecord) => !!r.imported;
 
 // ------------------------------------------------------------------ house rules switch + banner
 
@@ -97,6 +97,11 @@ export function HomebrewSection() {
           </a>
         </li>
       </ul>
+      {list.length > 0 && (
+        <div className="row-buttons">
+          <ShareRecordsButton records={list} title="Homebrew and house rules" label={`Share all homebrew & house rules (${list.length})`} />
+        </div>
+      )}
       <div className="row-buttons">
         <label className="switch-row">
           <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> Use house rules (uncheck to see the rules as written)
@@ -141,11 +146,14 @@ export function HomebrewView({ id }: { id: string }) {
       <Header
         title={`${label}: ${rec.name}`}
         actions={
-          !imported && (
-            <a className="btn subtle" href={`#/homebrew/${id}/edit`}>
-              Edit
-            </a>
-          )
+          <>
+            <ShareRecordsButton records={[rec]} title={rec.name} />
+            {!imported && (
+              <a className="btn subtle" href={`#/homebrew/${id}/edit`}>
+                Edit
+              </a>
+            )}
+          </>
         }
       />
       <div className="entry-head">

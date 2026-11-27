@@ -18,7 +18,8 @@ export interface UserRecord<T = any> {
   created: number;
   deleted?: boolean;
   origin?: string; // id of the record this was imported from (the same id when first imported)
-  author?: string; // shown on shared files ("from Dana")
+  author?: string; // who shared it ("Dana"), shown on imported records
+  imported?: boolean; // came from someone else's shared file (homebrew is then read-only here)
   data: T;
 }
 

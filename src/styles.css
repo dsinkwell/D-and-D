@@ -2756,3 +2756,9 @@ input.num {
 .row-title .pill {
   margin-left: 6px;
 }
+.share-msg {
+  display: block;
+}
+.import-choice p {
+  margin: 0 0 6px;
+}

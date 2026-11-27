@@ -60,6 +60,12 @@ The original brainstorm is kept below the decisions.
   the printed rules); house-rules switch ("Show rules as written"); "House rule: replaced by X" banner on the
   printed entries; the five skills drafted from the SRD + the decisions (`src/lib/houserules.ts`, class-skill
   lists computed from the SRD classes), marked Draft until the DM saves them.
+- Done (step 3e): sharing by file (`src/lib/share.ts`): "Share" on characters, lists and homebrew, "Share all
+  homebrew & house rules"; `.frref.json` through the share sheet (or a download); Saved → Import adds new
+  records and asks Replace / Keep both / Skip for ones already there (matched by id or origin). Records from
+  someone else are marked imported (homebrew read-only, "from Dana"). Tested DM → player → updated rules.
+  Not yet: opening a .frref.json straight from AirDrop/Files into the native app (needs a document type in
+  Info.plist + handling the open-URL event); the share sheet inside the native app is untested.
 - **Open (needs the PDFs again):** 10 books have their tables flattened into text by the extraction
   (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u), so they have no readable tables yet.
 - Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).

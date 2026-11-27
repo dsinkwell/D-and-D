@@ -3,7 +3,7 @@
 // can be shared as files like characters and homebrew.
 import { useState } from 'react';
 import { Header, Icon, Loading, Notice } from '../components';
-import { createRecord, deleteRecord, updateRecord, useRecord, useRecords } from '../lib/userdata';
+import { createRecord, deleteRecord, updateRecord, useRecord, useRecords, type UserRecord } from '../lib/userdata';
 import { navigate } from '../lib/router';
 
 export interface ListItem {
@@ -107,9 +107,12 @@ export function ListView({ id }: { id: string }) {
       <Header
         title={rec.name}
         actions={
-          <button className="btn subtle" onClick={() => setRenaming(!renaming)}>
-            Rename
-          </button>
+          <>
+            <ShareRecordsButton records={[rec]} title={rec.name} />
+            <button className="btn subtle" onClick={() => setRenaming(!renaming)}>
+              Rename
+            </button>
+          </>
         }
       />
       {renaming && (
@@ -172,5 +175,29 @@ export function ListView({ id }: { id: string }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ sharing (used by characters, lists, homebrew)
+
+/** "Share" for user records: a .frref.json file through the share sheet (or a download). */
+export function ShareRecordsButton({ records, title, label = 'Share' }: { records: UserRecord[]; title: string; label?: string }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = async () => {
+    const { myName, setMyName, shareRecords } = await import('../lib/share');
+    if (!myName()) {
+      const n = prompt('Your name, shown to the people you share with (optional):', '');
+      if (n !== null) setMyName(n || '');
+    }
+    const r = await shareRecords(records, title);
+    setMsg(r === 'downloaded' ? 'Saved as a file — send it to the others; they open it with Saved → Import.' : r === 'shared' ? 'Sent.' : null);
+  };
+  return (
+    <>
+      <button className="btn subtle" onClick={run} disabled={!records.length}>
+        {label}
+      </button>
+      {msg && <span className="muted small share-msg">{msg}</span>}
+    </>
   );
 }

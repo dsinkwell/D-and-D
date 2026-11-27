@@ -80,10 +80,29 @@ export default function SavedView() {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
 
+  const [plan, setPlan] = useState<import('../lib/share').ImportPlan | null>(null);
+  const finishImport = async (p: import('../lib/share').ImportPlan, how: import('../lib/share').Conflict) => {
+    const { applyImport } = await import('../lib/share');
+    const r = await applyImport(p, how);
+    setPlan(null);
+    const who = p.file.author ? ` from ${p.file.author}` : '';
+    setMsg(`Imported${who}: ${[r.added && `${r.added} added`, r.replaced && `${r.replaced} updated`, r.skipped && `${r.skipped} skipped`].filter(Boolean).join(', ') || 'nothing new'}.`);
+  };
   const importMarks = async (f?: File) => {
     if (!f) return;
     try {
-      const data = JSON.parse(await f.text());
+      const text = await f.text();
+      // a shared character, list or homebrew file
+      const share = await import('../lib/share');
+      const file = share.parseShareFile(text);
+      if (file) {
+        const p = await share.planImport(file);
+        if (p.existing.length) setPlan(p);
+        else await finishImport(p, 'skip');
+        if (fileRef.current) fileRef.current.value = '';
+        return;
+      }
+      const data = JSON.parse(text);
       const incoming: Mark[] = (data.bookmarks || []).filter((m: any) => m?.key && m?.href && m?.title && /^#\//.test(m.href));
       const map = new Map(marks.map((m) => [m.key, m]));
       incoming.forEach((m) => map.set(m.key, m));
@@ -117,11 +136,30 @@ export default function SavedView() {
             <button className="btn subtle" onClick={() => fileRef.current?.click()}>
               Import
             </button>
-            <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => importMarks(e.target.files?.[0])} />
+            <input ref={fileRef} type="file" accept="application/json,.json,.frref.json" hidden onChange={(e) => importMarks(e.target.files?.[0])} />
           </>
         }
       />
       {msg && <Notice>{msg}</Notice>}
+      {plan && (
+        <div className="card import-choice">
+          <p>
+            <b>{plan.existing.length === 1 ? `“${plan.existing[0].current.name}” is` : `${plan.existing.length} of these are`} already on this device.</b>
+            {plan.fresh.length ? ` (${plan.fresh.length} new will be added.)` : ''}
+          </p>
+          <div className="row-buttons">
+            <button className="btn primary" onClick={() => finishImport(plan, 'replace')}>
+              Replace with the new version
+            </button>
+            <button className="btn subtle" onClick={() => finishImport(plan, 'both')}>
+              Keep both
+            </button>
+            <button className="btn subtle" onClick={() => finishImport(plan, 'skip')}>
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
       <CharactersShortcut />
       <ListsSection />
       <HomebrewSection />

@@ -27,6 +27,7 @@ import {
 } from '../lib/characters';
 import { deleteRecord, useRecord, useRecords } from '../lib/userdata';
 import { navigate } from '../lib/router';
+import { ShareRecordsButton } from './ListViews';
 
 const LEVEL_NAME = ['0-level', '1st-level', '2nd-level', '3rd-level', '4th-level', '5th-level', '6th-level', '7th-level', '8th-level', '9th-level'];
 const ABIL: Record<string, string> = { Int: 'Int', Wis: 'Wis', Cha: 'Cha' };
@@ -106,9 +107,12 @@ export function CharacterView({ id }: { id: string }) {
       <Header
         title={rec.name}
         actions={
-          <button className="btn subtle" onClick={() => setRenaming(!renaming)}>
-            Rename
-          </button>
+          <>
+            <ShareRecordsButton records={[rec]} title={rec.name} />
+            <button className="btn subtle" onClick={() => setRenaming(!renaming)}>
+              Rename
+            </button>
+          </>
         }
       />
       {renaming && (
