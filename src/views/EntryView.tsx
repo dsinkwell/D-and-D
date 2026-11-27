@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BookmarkButton, Header, Icon, Loading, Notice, ShareButton, PinButton } from '../components';
 import { formatEntry } from '../lib/statblock';
 import { recordVisit } from '../lib/bookmarks';
@@ -6,6 +6,7 @@ import { CATEGORY_LABEL, Doc, Entry, getEntry, loadDoc } from '../lib/srd';
 import { wikiHref } from '../lib/router';
 import { findWikiTitle } from '../lib/wiki';
 import { bookEntryHref, BookHit, findInBooks } from '../lib/books';
+import { useAutolinked } from '../lib/autolink';
 
 /** Plausible wiki titles for an SRD entry ("Dwarves" -> "Dwarf", "Magic Fang, Greater" -> "Greater magic fang"). */
 function wikiCandidates(e: Entry): string[] {
@@ -57,13 +58,18 @@ export default function EntryView({ id }: { id: string }) {
     };
   }, [id]);
 
+  const body = useMemo(() => {
+    if (!entry || !doc || entry.i !== id) return '';
+    let blocks = doc.blocks.slice(entry.s, entry.e);
+    // the heading is shown in the page header already
+    if (/^<h\d/.test(blocks[0])) blocks = blocks.slice(1);
+    return entry.c !== 'rule' ? formatEntry(blocks.join('\n'), entry.c) : blocks.join('\n');
+  }, [entry, doc, id]);
+  const linked = useAutolinked(body, { selfHref: `#/srd/e/${id}`, selfTitle: entry?.t });
+
   if (err) return <Notice kind="error">{err}</Notice>;
   if (entry === null) return <Notice kind="error">That rules entry could not be found.</Notice>;
   if (!entry || !doc) return <Loading />;
-
-  let blocks = doc.blocks.slice(entry.s, entry.e);
-  // the heading is shown in the page header already
-  if (/^<h\d/.test(blocks[0])) blocks = blocks.slice(1);
 
   const isRef = entry.c !== 'rule';
   const label = CATEGORY_LABEL[entry.c];
@@ -109,7 +115,7 @@ export default function EntryView({ id }: { id: string }) {
       )}
       <div
         className={`content srd ${isRef ? 'ref' : ''} cat-body-${entry.c}`}
-        dangerouslySetInnerHTML={{ __html: isRef ? formatEntry(blocks.join('\n'), entry.c) : blocks.join('\n') }}
+        dangerouslySetInnerHTML={{ __html: linked }}
       />
       <footer className="source-note">
         Source: System Reference Document v3.5 (Open Game License). <a href={`#/srd/d/${entry.d}?at=${entry.a}`}>Read in chapter context →</a>

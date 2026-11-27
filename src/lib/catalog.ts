@@ -59,8 +59,12 @@ function sourceRank(s: Source) {
 const BOOK_KIND: Partial<Record<Category, BookKind>> = { spell: 'spell', feat: 'feat', monster: 'monster', item: 'item', trap: 'trap', prestige: 'prestige', class: 'class', deity: 'deity', power: 'power' };
 
 const cache = new Map<string, Promise<CatalogItem[]>>();
+let generation = 0;
+/** Bumped whenever the catalog is reset (books installed or updated). */
+export const catalogGeneration = () => generation;
 export function resetCatalog() {
   cache.clear();
+  generation++;
 }
 
 export function catalog(kind: Category): Promise<CatalogItem[]> {

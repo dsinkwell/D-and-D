@@ -2177,3 +2177,16 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
 .icon-btn.on {
   color: var(--accent);
 }
+
+/* Tap-to-link rules names (src/lib/autolink.ts): readable as text, clearly tappable. */
+.content a.rl {
+  color: inherit;
+  text-decoration: underline dotted color-mix(in srgb, var(--link) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.content a.rl:hover,
+.content a.rl:active {
+  color: var(--link);
+  text-decoration-style: solid;
+}

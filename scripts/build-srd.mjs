@@ -226,7 +226,7 @@ for (const ch of chapters) {
       if (b.small && /^\[.+\]$/.test(b.small)) {
         cat = 'feat';
         meta.ftype = b.small.slice(1, -1);
-      } else if (b.small && b.level === 2 && /\((Str|Dex|Con|Int|Wis|Cha|None)/.test('(' + b.small)) {
+      } else if (b.small && (b.level === 2 || (b.level === 3 && /^skills-/.test(ch.id))) && /\((Str|Dex|Con|Int|Wis|Cha|None)/.test('(' + b.small)) {
         cat = 'skill';
         meta.ability = b.small;
       } else if (b.level === 2 && isSpellFile(ch.file) && parseFields(blocks.slice(i + 1, ownEnd).map((x) => x.md)).Level) {

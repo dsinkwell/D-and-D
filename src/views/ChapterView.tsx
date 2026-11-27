@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookmarkButton, Header, Loading, Notice, PinButton } from '../components';
 import { recordVisit } from '../lib/bookmarks';
 import { Doc, loadDoc } from '../lib/srd';
+import { useAutolinked } from '../lib/autolink';
 
 export default function ChapterView({ id, at }: { id: string; at?: string }) {
   const [doc, setDoc] = useState<Doc | null>(null);
@@ -30,6 +31,9 @@ export default function ChapterView({ id, at }: { id: string; at?: string }) {
       }
     });
   }, [doc, at]);
+
+  const body = useMemo(() => (doc ? doc.blocks.filter((b) => !b.startsWith('<h1')).join('\n') : ''), [doc]);
+  const linked = useAutolinked(body);
 
   if (err) return <Notice kind="error">{err}</Notice>;
   if (!doc) return <Loading />;
@@ -65,7 +69,7 @@ export default function ChapterView({ id, at }: { id: string; at?: string }) {
           </ul>
         </details>
       )}
-      <div ref={ref} className="content srd" dangerouslySetInnerHTML={{ __html: doc.blocks.filter((b) => !b.startsWith('<h1')).join('\n') }} />
+      <div ref={ref} className="content srd" dangerouslySetInnerHTML={{ __html: linked }} />
     </article>
   );
 }

@@ -19,6 +19,7 @@ import { useDbStatus } from '../lib/db';
 import { catalog, nameKey, resetCatalog, Source } from '../lib/catalog';
 import { Category } from '../lib/srd';
 import { OfflineDataCard } from '../OfflineData';
+import { useAutolinked } from '../lib/autolink';
 
 const PASS_KEY = 'rc.books.pass.hint';
 
@@ -207,6 +208,12 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
     };
   }, [book, anchor]);
 
+  const body = useMemo(() => {
+    if (!entry || html === null) return '';
+    return (entry.kind !== 'rule' ? formatEntry(html, entry.kind) : html) || '<p class="muted">(This heading has no text of its own — see the sections below.)</p>';
+  }, [entry, html]);
+  const linked = useAutolinked(body, { selfHref: entry ? bookEntryHref(entry) : undefined, selfTitle: entry?.title });
+
   if (err) return <Notice kind="error">{err.includes('not installed') ? 'Unlock your group’s books under My Books first.' : err}</Notice>;
   if (entry === null) return <Notice kind="error">That section couldn’t be found.</Notice>;
   if (!entry || html === null) return <Loading />;
@@ -248,7 +255,7 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
       )}
       <div
         className={`content ${isRef ? 'ref' : 'book'}`}
-        dangerouslySetInnerHTML={{ __html: (isRef ? formatEntry(html || '', entry.kind) : html) || '<p class="muted">(This heading has no text of its own — see the sections below.)</p>' }}
+        dangerouslySetInnerHTML={{ __html: linked }}
       />
       <nav className="prev-next">
         {nav.prev ? (
