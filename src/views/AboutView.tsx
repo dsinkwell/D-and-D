@@ -3,7 +3,8 @@ import { Header, Notice, useOnline } from '../components';
 import { formatBytes, storageEstimate } from '../lib/storage';
 import { OfflineDataCard } from '../OfflineData';
 import { runDiagnostics, type Check } from '../lib/diagnostics';
-import { AskModelSettings, AutoWriteSetting } from './AskView';
+import { AskModelSettings } from './AskView';
+import WritingSettings from './WritingSettings';
 import { clearSaved, countSaved, DEFAULT_WIKI, getWikiSettings, saveWikiSettings, searchWiki } from '../lib/wiki';
 
 export default function AboutView() {
@@ -53,7 +54,7 @@ export default function AboutView() {
 
       <OfflineDataCard name="wiki" />
       <AskModelSettings />
-      <AutoWriteSetting />
+      <WritingSettings />
 
       <section className="card">
         <h2>Live wiki connection</h2>

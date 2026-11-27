@@ -2048,3 +2048,36 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
 .diag li.fail b {
   color: var(--accent);
 }
+
+/* About: written answers */
+.writing-sub {
+  font-size: 15px;
+  margin: 16px 0 4px;
+}
+.model-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+}
+.model-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.model-list .progress {
+  flex: 1 1 100%;
+  margin: 4px 0 0;
+}
+.model-use {
+  display: block;
+  font-size: 13px;
+  margin-top: 2px;
+}
+.toggle-row {
+  display: block;
+  margin: 8px 0;
+}

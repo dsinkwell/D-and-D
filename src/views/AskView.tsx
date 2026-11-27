@@ -9,7 +9,7 @@ import { ask, askDownloaded, downloadAsk, kindLabel, prepareAsk, removeAsk, type
 import { directAnswer, listAnswer, warmDirect, type Direct, type ListAnswer } from '../lib/ask/direct';
 import { highlight } from '../lib/ask/highlight';
 import { whileBusy } from '../lib/busy';
-import { autoWrite, prewarmWriter, setAutoWrite, writeAnswer, writerAvailability, type Written } from '../lib/ask/writer';
+import { autoWrite, chooseEngine, engineLabel, prewarmWriter, writeAnswer, type Engine, type Written } from '../lib/ask/writer';
 import type { Passage } from '../lib/ask/engine';
 
 const EXAMPLES = [
@@ -49,7 +49,7 @@ export default function AskView({ route }: { route: Route }) {
   const [busy, setBusy] = useState(false);
   const [ans, setAns] = useState<Answer | null>(null);
   const [model, setModel] = useState<boolean | null>(null);
-  const [canWrite, setCanWrite] = useState(false);
+  const [engine, setEngine] = useState<Engine | null>(null);
   const [writeWhy, setWriteWhy] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -59,12 +59,11 @@ export default function AskView({ route }: { route: Route }) {
       if (ok) prepareAsk().catch(() => {}); // warm up while the user types
     });
     warmDirect();
-    writerAvailability().then((a) => {
-      setCanWrite(a.available);
-      // Devices that can't run Apple Intelligence just get the normal Ask (no message). Only say
-      // something when the user can fix it; every reason is listed under About → Diagnostics.
-      if (!a.available && /Turn on Apple Intelligence|getting ready/i.test(a.reason || '')) setWriteWhy(a.reason!);
-      if (a.available) prewarmWriter();
+    // Apple Intelligence where available, else a downloaded open model, else the normal Ask.
+    chooseEngine().then(({ engine: e, hint }) => {
+      setEngine(e);
+      if (e?.kind === 'apple') prewarmWriter();
+      if (!e && hint) setWriteWhy(hint);
     });
     if (!routeQ) inputRef.current?.focus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -139,15 +138,16 @@ export default function AskView({ route }: { route: Route }) {
 
       {ans && (
         <div className={`ask-results ${busy ? 'stale' : ''}`} data-q={ans.q}>
-          {canWrite && (
+          {engine && (
             <WriteCard
               key={ans.q}
               q={ans.q}
+              engine={engine}
               found={{ direct: ans.direct, passages: ans.result?.passages || [] }}
               auto={autoWrite() && !ans.list}
             />
           )}
-          {!canWrite && writeWhy && <p className="muted ask-status">Written answers: {writeWhy}</p>}
+          {!engine && writeWhy && <p className="muted ask-status">Written answers: {writeWhy}</p>}
 
           {ans.direct && (
             <a className="ask-direct" href={ans.direct.href}>
@@ -274,7 +274,7 @@ export function AskModelSettings() {
 }
 
 /** Native app: "Write an answer" with Apple's on-device model, from the passages Ask found. */
-function WriteCard({ q, found, auto }: { q: string; found: { direct: Direct | null; passages: Passage[] }; auto: boolean }) {
+function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; found: { direct: Direct | null; passages: Passage[] }; auto: boolean }) {
   const [state, setState] = useState<'idle' | 'writing' | 'done' | 'error'>('idle');
   const [text, setText] = useState('');
   const [sources, setSources] = useState<Passage[]>([]);
@@ -293,7 +293,7 @@ function WriteCard({ q, found, auto }: { q: string; found: { direct: Direct | nu
     setText('');
     setErr('');
     try {
-      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => setSources(b.sources), found.passages.length ? found : undefined));
+      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => setSources(b.sources), found.passages.length ? found : undefined, engine));
       setText(w.text);
       setInfo(w);
       setState('done');
@@ -314,7 +314,7 @@ function WriteCard({ q, found, auto }: { q: string; found: { direct: Direct | nu
       {err && <p className="muted ask-status">Couldn’t write an answer ({err}). The search results below still apply.</p>}
       {sources.length > 0 && !err && (
         <p className="ask-written-src">
-          Written on this device by Apple Intelligence from:{' '}
+          Written on this device by {engineLabel(engine)} from:{' '}
           {sources.map((p, i) => (
             <a key={p.key} href={p.href}>
               {i ? ', ' : ''}
@@ -330,30 +330,5 @@ function WriteCard({ q, found, auto }: { q: string; found: { direct: Direct | nu
         </button>
       )}
     </div>
-  );
-}
-
-/** About page (native app with Apple Intelligence): write answers automatically or on request. */
-export function AutoWriteSetting() {
-  const [avail, setAvail] = useState(false);
-  const [on, setOn] = useState(autoWrite());
-  useEffect(() => void writerAvailability().then((a) => setAvail(a.available)), []);
-  if (!avail) return null;
-  return (
-    <section className="card">
-      <h2>Written answers</h2>
-      <label className="toggle-row">
-        <input
-          type="checkbox"
-          checked={on}
-          onChange={(e) => {
-            setOn(e.target.checked);
-            setAutoWrite(e.target.checked);
-          }}
-        />{' '}
-        Write answers automatically when you tap Ask (Apple Intelligence, on this device)
-      </label>
-      <p className="muted">When off, Ask shows the search results with a “Write an answer” button.</p>
-    </section>
   );
 }
