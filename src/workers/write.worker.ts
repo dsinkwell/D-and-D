@@ -13,7 +13,20 @@ type Msg =
   | { id: number; op: 'unload' }
   | { id: number; op: 'stored'; models: string[]; dtype: string }
   | { id: number; op: 'download'; model: string; dtype: string }
-  | { id: number; op: 'clear' };
+  | { id: number; op: 'clear' }
+  | { id: number; op: 'mlcStored'; models: string[] }
+  | { id: number; op: 'mlcLoad'; model: string }
+  | { id: number; op: 'mlcGenerate'; messages: { role: string; content: string }[]; max: number };
+
+// ------------------------------------------------------------------ WebLLM engine
+// Second engine for comparison: WebLLM (MLC) loads a model in ~30 MB pieces straight onto the
+// GPU, so preparing it needs far less memory than ONNX Runtime (which briefly holds 2–3 copies
+// of the model and ran out of memory on an iPhone with 760 MB models). Weights come from
+// Hugging Face (mlc-ai), the compiled model code from the WebLLM project on GitHub; both are
+// cached by WebLLM in the browser.
+let mlc: any = null;
+let mlcEngine: any = null;
+const mlcLib = async () => (mlc ??= await import('@mlc-ai/web-llm'));
 
 // ------------------------------------------------------------------ downloads
 // Model files are written to the browser's private file storage (OPFS) piece by piece as they
@@ -220,11 +233,69 @@ self.onmessage = async (ev: MessageEvent<Msg>) => {
   const m = ev.data;
   const reply = (data: unknown) => post({ id: m.id, ok: true, data });
   try {
-    if (m.op === 'clear') {
+    if (m.op === 'mlcStored') {
+      const w = await mlcLib();
+      const out: Record<string, boolean> = {};
+      for (const mid of m.models) out[mid] = await w.hasModelInCache(mid).catch(() => false);
+      reply(out);
+    } else if (m.op === 'mlcLoad') {
+      const w = await mlcLib();
       await model?.dispose?.();
       model = tok = null;
       loadedId = '';
+      const t0 = performance.now();
+      if (mlcEngine) await mlcEngine.reload(m.model);
+      else
+        mlcEngine = await w.CreateMLCEngine(m.model, {
+          initProgressCallback: (r: any) => post({ id: m.id, progress: { loaded: r.progress, total: 1, text: r.text } }),
+        });
+      const t1 = performance.now();
+      await mlcEngine.chat.completions.create({ messages: [{ role: 'user', content: 'Hi' }], max_tokens: 2, temperature: 0 });
+      reply({ loadMs: Math.round(t1 - t0), warmMs: Math.round(performance.now() - t1) });
+    } else if (m.op === 'mlcGenerate') {
+      if (!mlcEngine) throw new Error('No model loaded');
+      const t0 = performance.now();
+      let first = 0;
+      let n = 0;
+      let usage: any = null;
+      const stream = await mlcEngine.chat.completions.create({
+        messages: m.messages,
+        max_tokens: m.max,
+        temperature: 0,
+        stream: true,
+        stream_options: { include_usage: true },
+        extra_body: { enable_thinking: false },
+      });
+      for await (const c of stream) {
+        const text = c.choices?.[0]?.delta?.content;
+        if (text) {
+          if (!n) first = performance.now();
+          n++;
+          post({ id: m.id, text });
+        }
+        if (c.usage) usage = c.usage;
+      }
+      const end = performance.now();
+      const tokens = usage?.completion_tokens ?? n;
+      reply({
+        promptTokens: usage?.prompt_tokens ?? 0,
+        tokens,
+        firstMs: Math.round(first - t0),
+        tokPerSec: Math.round((usage?.extra?.decode_tokens_per_s ?? (tokens > 1 ? (tokens - 1) / ((end - first) / 1000) : 0)) * 10) / 10,
+        totalMs: Math.round(end - t0),
+      });
+    } else if (m.op === 'clear') {
+      await model?.dispose?.();
+      model = tok = null;
+      loadedId = '';
+      await mlcEngine?.unload?.();
+      mlcEngine = null;
       await clearAll();
+      try {
+        for (const k of await caches.keys()) if (/^webllm/.test(k)) await caches.delete(k);
+      } catch {
+        /* nothing stored */
+      }
       reply(true);
     } else if (m.op === 'stored') {
       const out: Record<string, boolean> = {};
@@ -244,6 +315,8 @@ self.onmessage = async (ev: MessageEvent<Msg>) => {
       reply(true);
     } else if (m.op === 'load') {
       const t = await lib();
+      await mlcEngine?.unload?.();
+      mlcEngine = null;
       if (model && loadedId !== `${m.model}|${m.dtype}|${m.device}`) {
         await model.dispose?.();
         model = null;

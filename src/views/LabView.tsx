@@ -12,8 +12,16 @@ interface ModelChoice {
   name: string;
   mb: number;
   note: string;
+  mlc?: boolean; // WebLLM engine (mb = memory it needs on the GPU)
+  f16only?: boolean; // WebLLM build only exists for GPUs with half precision
 }
 const MODELS: ModelChoice[] = [
+  // WebLLM loads models in small pieces straight to the GPU: the way to fit 1B+ models on iPhone
+  { id: 'gemma3-1b-it-q4f16_1-MLC', name: 'Gemma 3 · 1B (WebLLM)', mb: 711, note: 'try this first for better answers', mlc: true, f16only: true },
+  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 · 1B (WebLLM)', mb: 879, note: 'good writing', mlc: true },
+  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', name: 'Qwen 2.5 · 1.5B (WebLLM)', mb: 1630, note: 'bigger, smarter', mlc: true },
+  { id: 'SmolLM2-1.7B-Instruct-q4f16_1-MLC', name: 'SmolLM2 · 1.7B (WebLLM)', mb: 1774, note: 'bigger', mlc: true },
+  { id: 'Qwen3-1.7B-q4f16_1-MLC', name: 'Qwen 3 · 1.7B (WebLLM)', mb: 2037, note: 'largest; may not fit on iPhone', mlc: true },
   { id: 'onnx-community/LFM2-350M-ONNX', name: 'LFM2 · 350M', mb: 255, note: 'tiny; try this first on iPhone' },
   { id: 'onnx-community/gemma-3-270m-it-ONNX', name: 'Gemma 3 · 270M', mb: 273, note: 'tiny' },
   { id: 'onnx-community/Qwen2.5-0.5B-Instruct', name: 'Qwen 2.5 · 0.5B', mb: 483, note: 'smallest, fastest' },
@@ -130,7 +138,7 @@ export default function LabView() {
   const [dev, setDev] = useState<Record<string, any> | null>(null);
   const [choice, setChoice] = useState(MODELS[0].id);
   const [loading, setLoading] = useState<number | null>(null); // 0..1
-  const [loaded, setLoaded] = useState<{ id: string; loadMs: number; warmMs: number; dtype: string; device: string } | null>(null);
+  const [loaded, setLoaded] = useState<{ id: string; loadMs: number; warmMs: number; dtype: string; device: string; engine: 'onnx' | 'mlc' } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [runs, setRuns] = useState<Run[]>([]);
@@ -161,11 +169,18 @@ export default function LabView() {
   const force = new URLSearchParams(location.hash.split('?')[1] || '').get('device');
   const device = force || (dev?.webgpu ? 'webgpu' : 'wasm');
   const dtype = device === 'webgpu' && dev?.f16 ? 'q4f16' : 'q4';
+  // WebLLM: q4f16 builds need half precision on the GPU; otherwise the q4f32 build
+  const mlcId = (m: ModelChoice) => (dev?.f16 ? m.id : m.id.replace('q4f16_1', 'q4f32_1'));
 
-  const refreshStored = () =>
-    call<Record<string, boolean>>({ op: 'stored', models: MODELS.map((m) => m.id), dtype })
-      .then(setStored)
+  const refreshStored = () => {
+    call<Record<string, boolean>>({ op: 'stored', models: MODELS.filter((m) => !m.mlc).map((m) => m.id), dtype })
+      .then((st) => setStored((cur) => ({ ...cur, ...st })))
       .catch(() => {});
+    const mlcModels = MODELS.filter((m) => m.mlc);
+    call<Record<string, boolean>>({ op: 'mlcStored', models: mlcModels.map(mlcId) })
+      .then((st) => setStored((cur) => ({ ...cur, ...Object.fromEntries(mlcModels.map((m) => [m.id, !!st[mlcId(m)]])) })))
+      .catch(() => {});
+  };
   useEffect(() => {
     if (dev) refreshStored();
   }, [dev, dtype]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -177,6 +192,25 @@ export default function LabView() {
     let shown = -1;
     let phase = 'download';
     try {
+      if (model.mlc) {
+        // WebLLM downloads and prepares in one go, piece by piece (pieces are kept if it stops)
+        phase = 'prepare';
+        setStatus(`Loading ${model.name}: 0%`);
+        const r = await call<{ loadMs: number; warmMs: number }>({ op: 'mlcLoad', model: mlcId(model) }, (m) => {
+          if (!m.progress) return;
+          setLoading(Math.min(m.progress.loaded, 0.999));
+          const pct = Math.floor(m.progress.loaded * 10) * 10;
+          if (pct !== shown) {
+            shown = pct;
+            setStatus(`Loading ${model.name}: ${pct}% (${String(m.progress.text || '').split(/[.,]/)[0].slice(0, 60)})`);
+          }
+        });
+        setStored((st) => ({ ...st, [choice]: true }));
+        setLoaded({ id: choice, dtype: dev?.f16 ? 'q4f16' : 'q4f32', device: 'webgpu', engine: 'mlc', ...r });
+        setStatus(`${model.name} is ready.`, false);
+        setLoading(null);
+        return true;
+      }
       // 1. download (streamed to storage; kept even if step 2 fails)
       if (!stored[choice]) {
         setStatus(`Downloading ${model.name}: 0%`);
@@ -197,7 +231,7 @@ export default function LabView() {
       setLoading(1);
       setStatus(`Preparing ${model.name} on the ${device === 'webgpu' ? 'GPU' : 'processor'} (download saved)`);
       const r = await call<{ loadMs: number; warmMs: number }>({ op: 'load', model: choice, dtype, device });
-      setLoaded({ id: choice, dtype, device, ...r });
+      setLoaded({ id: choice, dtype, device, engine: 'onnx', ...r });
       setStatus(`${model.name} is ready.`, false);
       ok = true;
     } catch (e) {
@@ -222,7 +256,7 @@ export default function LabView() {
       run.searchMs = p.searchMs;
       show();
       setStatus(`Writing an answer with ${loaded?.id.split('/')[1] || model.name}: “${question}”`);
-      run.stats = await call<Stats>({ op: 'generate', messages: p.messages, max: 180 }, (m) => {
+      run.stats = await call<Stats>({ op: loaded?.engine === 'mlc' ? 'mlcGenerate' : 'generate', messages: p.messages, max: 180 }, (m) => {
         if (m.text) {
           run.answer += m.text;
           show();
@@ -286,7 +320,9 @@ export default function LabView() {
       {crashed && (
         <Notice kind="warn">
           Last time, the page stopped while: <b>{crashed}</b>.{' '}
-          {/^Preparing/.test(crashed)
+          {/WebLLM/.test(crashed)
+            ? 'This model is probably too big for this device. Any part already downloaded is kept. Try Gemma 3 · 1B (WebLLM), the smallest of the WebLLM models.'
+            : /^Preparing/.test(crashed)
             ? 'The download is saved, but this device ran out of memory while preparing the model (Safari then reloads the page). Try a smaller model: LFM2 · 350M or Gemma 3 · 270M.'
             : 'Safari reloads a page that runs out of memory. Try again, or try a smaller model (LFM2 · 350M or Gemma 3 · 270M).'}
         </Notice>
@@ -324,9 +360,17 @@ export default function LabView() {
         <div className="lab-models">
           {MODELS.map((m) => (
             <label key={m.id} className={`lab-model ${choice === m.id ? 'on' : ''}`}>
-              <input type="radio" name="model" checked={choice === m.id} onChange={() => setChoice(m.id)} disabled={loading !== null || busy} />
+              <input
+                type="radio"
+                name="model"
+                checked={choice === m.id}
+                onChange={() => setChoice(m.id)}
+                disabled={loading !== null || busy || (!!m.f16only && dev !== null && !dev.f16)}
+              />
               <span>
-                <b>{m.name}</b> <span className="muted">· {dtype === 'q4f16' ? m.mb : Math.round(m.mb * 1.6)} MB · {m.note}</span>
+                <b>{m.name}</b> <span className="muted">
+                  · {m.mlc ? `about ${(m.mb / 1000).toFixed(1)} GB in use` : `${dtype === 'q4f16' ? m.mb : Math.round(m.mb * 1.6)} MB`} · {m.note}
+                </span>
                 {loaded?.id === m.id ? <span className="lab-ok"> · ready</span> : stored[m.id] ? <span className="lab-ok"> · downloaded</span> : null}
               </span>
             </label>
@@ -337,7 +381,13 @@ export default function LabView() {
             <div className="progress-bar">
               <div style={{ width: `${Math.round(loading * 100)}%` }} />
             </div>
-            <span>{loading < 1 ? `Downloading ${Math.round(loading * 100)}% of ${model.mb} MB` : `Preparing the model on the ${device === 'webgpu' ? 'GPU' : 'processor'}…`}</span>
+            <span>
+              {model.mlc
+                ? `Loading ${Math.round(loading * 100)}% (download and setup together)`
+                : loading < 1
+                  ? `Downloading ${Math.round(loading * 100)}% of ${model.mb} MB`
+                  : `Preparing the model on the ${device === 'webgpu' ? 'GPU' : 'processor'}…`}
+            </span>
           </div>
         ) : (
           <button className="btn primary" onClick={() => void whileBusy('lab', load)} disabled={!dev || busy || loaded?.id === choice}>
