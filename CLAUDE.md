@@ -66,7 +66,8 @@ The user was frustrated by the first version (SRD only + per-device PDF import +
 ## App updates
 
 - `registerType: 'prompt'`; `src/main.tsx` applies a new version (skip-waiting, then reload) only when `src/lib/busy.ts` reports nothing busy. Long operations wrap themselves in `whileBusy(name, fn)`: DB installs (OfflineData), the Ask model download, lab load/write. Test for this: publish a build mid-download, call `registration.update()`, check the page survives (note: a comment-only change produces identical bundles, so no update).
-- Lab downloads stream the model's ONNX files into `transformers-cache` (key = HF resolve URL, file list from `config.json` → `transformers.js_config.use_external_data_format`) before loading, so a crash while preparing keeps the download; a `__lab__/<model>/<dtype>` entry records the external-data files.
+- Lab downloads stream the model files into OPFS (folder `lab-models`, written chunk by chunk with a sync access handle in the worker; `<file>.ok` marks a complete file) and transformers.js reads them through `env.customCache`. Safari's Cache API buffers a whole file in memory while storing it, which killed the page at the end of the 760 MB LFM2 1.2B download on an iPhone 18 Pro. File list from `config.json` → `transformers.js_config.use_external_data_format`; an index file records each model's big files. Older downloads in `transformers-cache` are still read.
+- iPhone 18 Pro results (LFM2 350M, q4f16, WebGPU): load 3 s, first words 0.5–1.0 s with 570–1150 prompt tokens, 100–163 tokens/s. Speed is no problem; the 350M model's answers were poor (padding, one invented answer), so the test is now about 1B-class models.
 
 ## Commands
 

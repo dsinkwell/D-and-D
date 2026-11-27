@@ -320,7 +320,7 @@ export default function LabView() {
 
       <section className="card lab-card">
         <h2>1. Pick and load a model</h2>
-        <p className="muted">Downloads once from Hugging Face (free, no account) and stays in this browser's cache. Use Wi-Fi.</p>
+        <p className="muted">Downloads once from Hugging Face (free, no account) and stays on this device. Use Wi-Fi.</p>
         <div className="lab-models">
           {MODELS.map((m) => (
             <label key={m.id} className={`lab-model ${choice === m.id ? 'on' : ''}`}>
@@ -412,8 +412,7 @@ export default function LabView() {
         <button
           className="btn subtle"
           onClick={async () => {
-            await call({ op: 'unload' }).catch(() => {});
-            await caches.delete('transformers-cache');
+            await call({ op: 'clear' }).catch(() => {});
             setLoaded(null);
             setStored({});
           }}

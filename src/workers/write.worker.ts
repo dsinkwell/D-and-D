@@ -3,8 +3,8 @@
 //
 // This is a test bench, not part of the app's offline set: transformers.js v4 and its ONNX
 // Runtime files are hosted with the app (public/lab/, copied by scripts/copy-lab.mjs); the
-// model files come from Hugging Face (free, no account). The browser keeps the downloaded
-// model in its cache ("transformers-cache"), so it downloads once per device.
+// model files come from Hugging Face (free, no account) and are kept in the browser's private
+// file storage (OPFS, folder "lab-models"), so each model downloads once per device.
 
 type Msg =
   | { id: number; op: 'probe'; base: string }
@@ -12,16 +12,87 @@ type Msg =
   | { id: number; op: 'generate'; messages: { role: string; content: string }[]; max: number }
   | { id: number; op: 'unload' }
   | { id: number; op: 'stored'; models: string[]; dtype: string }
-  | { id: number; op: 'download'; model: string; dtype: string };
+  | { id: number; op: 'download'; model: string; dtype: string }
+  | { id: number; op: 'clear' };
 
 // ------------------------------------------------------------------ downloads
-// The model's big ONNX files are streamed straight into the browser cache that transformers.js
-// reads from ("transformers-cache", keyed by the Hugging Face URL), without holding them in
-// memory. A download is then saved even if the next step (preparing the model) runs out of
-// memory, and the page can tell which models are already on the device.
+// Model files are written to the browser's private file storage (OPFS) piece by piece as they
+// arrive, so memory stays flat however big the file (Safari's Cache API holds a whole file in
+// memory while storing it, which killed the page on the 760 MB models). transformers.js reads
+// them back through a custom cache. A download is kept even if preparing the model fails.
 const HF = 'https://huggingface.co/';
-const CACHE = 'transformers-cache';
+const OLD_CACHE = 'transformers-cache'; // where earlier test versions stored models
+const DIR = 'lab-models';
 const fileUrl = (model: string, f: string) => `${HF}${model}/resolve/main/${f}`;
+const fname = (url: string) => url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+
+let dirP: Promise<FileSystemDirectoryHandle> | null = null;
+const dir = () => (dirP ??= navigator.storage.getDirectory().then((r) => r.getDirectoryHandle(DIR, { create: true })));
+
+async function opfsFile(url: string): Promise<File | null> {
+  try {
+    const d = await dir();
+    await d.getFileHandle(`${fname(url)}.ok`); // written only after the file is complete
+    return await (await d.getFileHandle(fname(url))).getFile();
+  } catch {
+    return null;
+  }
+}
+
+async function has(url: string) {
+  if (await opfsFile(url)) return true;
+  try {
+    return !!(await (await caches.open(OLD_CACHE)).match(url));
+  } catch {
+    return false;
+  }
+}
+
+/** Stream a response body into OPFS without holding it in memory. */
+async function store(url: string, body: ReadableStream<Uint8Array>, onBytes?: (n: number) => void) {
+  const d = await dir();
+  try {
+    await d.removeEntry(`${fname(url)}.ok`);
+  } catch {
+    /* not there */
+  }
+  const fh = await d.getFileHandle(fname(url), { create: true });
+  const h = await (fh as any).createSyncAccessHandle();
+  try {
+    h.truncate(0);
+    let at = 0;
+    const reader = body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      at += h.write(value, { at });
+      onBytes?.(value.byteLength);
+    }
+    h.truncate(at);
+    h.flush();
+  } finally {
+    h.close();
+  }
+  await d.getFileHandle(`${fname(url)}.ok`, { create: true });
+}
+
+// transformers.js asks this "cache" for every file before downloading it
+const customCache = {
+  async match(req: string | Request) {
+    const url = typeof req === 'string' ? req : req.url;
+    const f = await opfsFile(url);
+    if (f) return new Response(f, { headers: { 'content-length': String(f.size), 'content-type': 'application/octet-stream' } });
+    try {
+      return (await (await caches.open(OLD_CACHE)).match(url)) || undefined;
+    } catch {
+      return undefined;
+    }
+  },
+  async put(req: string | Request, res: Response) {
+    const url = typeof req === 'string' ? req : req.url;
+    if (res.body) await store(url, res.body);
+  },
+};
 
 // Same rule transformers.js uses: config.json → transformers.js_config.use_external_data_format
 // says whether the weights sit in separate .onnx_data files, and how many.
@@ -47,15 +118,20 @@ async function bigFiles(model: string, dtype: string): Promise<{ name: string; s
   );
 }
 
+// list of a model's big files, recorded when its download finishes
+const indexUrl = (model: string, dtype: string) => `${HF}__lab__/${model}/${dtype}.json`;
+
 async function isStored(model: string, dtype: string) {
   try {
-    const c = await caches.open(CACHE);
-    const names = [`onnx/model_${dtype}.onnx`];
-    for (const n of names) if (!(await c.match(fileUrl(model, n)))) return false;
-    // external weights, when the model has them, are listed in the cached index of this model
-    const idx = await c.match(`${HF}__lab__/${model}/${dtype}`);
-    if (!idx) return false;
-    for (const n of (await idx.json()) as string[]) if (!(await c.match(fileUrl(model, n)))) return false;
+    const idx = await opfsFile(indexUrl(model, dtype));
+    let names: string[] | null = idx ? JSON.parse(await idx.text()) : null;
+    if (!names) {
+      // earlier test version: index in the Cache API (external-data names only)
+      const old = await (await caches.open(OLD_CACHE)).match(`${HF}__lab__/${model}/${dtype}`);
+      if (!old) return false;
+      names = [`onnx/model_${dtype}.onnx`, ...((await old.json()) as string[])];
+    }
+    for (const n of names) if (!(await has(fileUrl(model, n)))) return false;
     return true;
   } catch {
     return false;
@@ -63,37 +139,40 @@ async function isStored(model: string, dtype: string) {
 }
 
 async function download(id: number, model: string, dtype: string) {
-  const c = await caches.open(CACHE);
   const files = await bigFiles(model, dtype);
   const total = files.reduce((a, f) => a + f.size, 0);
   let done = 0;
+  let last = 0;
+  const tick = (n: number) => {
+    done += n;
+    if (done - last > 2e6) {
+      last = done;
+      post({ id, progress: { loaded: done, total } });
+    }
+  };
   for (const f of files) {
     const url = fileUrl(model, f.name);
-    if (await c.match(url)) {
-      done += f.size;
-      post({ id, progress: { loaded: done, total } });
+    if (await has(url)) {
+      tick(f.size);
       continue;
     }
     const res = await fetch(url);
     if (!res.ok || !res.body) throw new Error(`Download failed: ${f.name} (${res.status})`);
-    let last = 0;
-    const counter = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, ctl) {
-        done += chunk.byteLength;
-        if (done - last > 2e6) {
-          last = done;
-          post({ id, progress: { loaded: done, total } });
-        }
-        ctl.enqueue(chunk);
-      },
-    });
-    const headers = new Headers({ 'content-type': res.headers.get('content-type') || 'application/octet-stream' });
-    if (f.size) headers.set('content-length', String(f.size));
-    await c.put(url, new Response(res.body.pipeThrough(counter), { status: 200, headers }));
+    await store(url, res.body, tick);
   }
-  const extra = files.map((f) => f.name).filter((n) => n.includes('_data'));
-  await c.put(`${HF}__lab__/${model}/${dtype}`, new Response(JSON.stringify(extra), { headers: { 'content-type': 'application/json' } }));
+  const names = files.map((f) => f.name);
+  await store(indexUrl(model, dtype), new Response(JSON.stringify(names)).body!);
   post({ id, progress: { loaded: total, total } });
+}
+
+async function clearAll() {
+  try {
+    await (await navigator.storage.getDirectory()).removeEntry(DIR, { recursive: true });
+  } catch {
+    /* nothing stored */
+  }
+  dirP = null;
+  await caches.delete(OLD_CACHE);
 }
 
 let T: any = null;
@@ -109,6 +188,9 @@ async function lib() {
     T = await import(/* @vite-ignore */ `${base}lab/transformers.min.js`);
     T.env.allowLocalModels = false;
     T.env.backends.onnx.wasm.wasmPaths = `${base}lab/`;
+    T.env.useBrowserCache = false;
+    T.env.useCustomCache = true;
+    T.env.customCache = customCache;
   }
   return T;
 }
@@ -138,7 +220,13 @@ self.onmessage = async (ev: MessageEvent<Msg>) => {
   const m = ev.data;
   const reply = (data: unknown) => post({ id: m.id, ok: true, data });
   try {
-    if (m.op === 'stored') {
+    if (m.op === 'clear') {
+      await model?.dispose?.();
+      model = tok = null;
+      loadedId = '';
+      await clearAll();
+      reply(true);
+    } else if (m.op === 'stored') {
       const out: Record<string, boolean> = {};
       for (const mid of m.models) out[mid] = await isStored(mid, m.dtype);
       reply(out);
