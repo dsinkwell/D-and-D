@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: ios
-  cancel-in-progress: true
+  cancel-in-progress: false # a new push waits for the running build instead of cancelling it
 
 jobs:
   build:
@@ -53,9 +53,16 @@ jobs:
           npx cap sync ios
           node scripts/native-plugins.mjs
 
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
+      # Newest released Xcode on the runner (betas excluded: Apple rejects beta-SDK builds).
+      # Apple requires the iOS 27 SDK (Xcode 27) for uploads from April 2027; this picks it up
+      # automatically once GitHub installs it on the Mac runners.
+      - name: Select Xcode
+        run: |
+          echo "Installed:"; ls -d /Applications/Xcode*.app
+          X=$(ls -d /Applications/Xcode_*.app | grep -viE 'beta' | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Compile check (no signing secrets yet)
         if: env.HAS_SIGNING != 'true'
