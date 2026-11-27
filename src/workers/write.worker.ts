@@ -244,12 +244,19 @@ self.onmessage = async (ev: MessageEvent<Msg>) => {
       model = tok = null;
       loadedId = '';
       const t0 = performance.now();
-      if (mlcEngine) await mlcEngine.reload(m.model);
+      // Smaller memory reservation: the test prompts are ~1,200 tokens + a short answer, so a
+      // 2,048-token context (default 4,096) is enough and halves the KV cache. (The prefill batch
+      // size is fixed in the compiled model and can't be changed here.)
+      const chatOpts = { context_window_size: 2048 };
+      if (mlcEngine) await mlcEngine.reload(m.model, chatOpts);
       else
-        mlcEngine = await w.CreateMLCEngine(m.model, {
-          initProgressCallback: (r: any) => post({ id: m.id, progress: { loaded: r.progress, total: 1, text: r.text } }),
-        });
+        mlcEngine = await w.CreateMLCEngine(
+          m.model,
+          { initProgressCallback: (r: any) => post({ id: m.id, progress: { loaded: r.progress, total: 1, text: r.text } }) },
+          chatOpts,
+        );
       const t1 = performance.now();
+      post({ id: m.id, progress: { loaded: 1, total: 1, text: 'first run', warm: true } });
       await mlcEngine.chat.completions.create({ messages: [{ role: 'user', content: 'Hi' }], max_tokens: 2, temperature: 0 });
       reply({ loadMs: Math.round(t1 - t0), warmMs: Math.round(performance.now() - t1) });
     } else if (m.op === 'mlcGenerate') {

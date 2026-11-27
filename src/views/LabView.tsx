@@ -198,6 +198,10 @@ export default function LabView() {
         setStatus(`Loading ${model.name}: 0%`);
         const r = await call<{ loadMs: number; warmMs: number }>({ op: 'mlcLoad', model: mlcId(model) }, (m) => {
           if (!m.progress) return;
+          if (m.progress.warm) {
+            setStatus(`Loading ${model.name}: weights loaded; first run (setting up the GPU)`);
+            return;
+          }
           setLoading(Math.min(m.progress.loaded, 0.999));
           const pct = Math.floor(m.progress.loaded * 10) * 10;
           if (pct !== shown) {
@@ -321,7 +325,9 @@ export default function LabView() {
         <Notice kind="warn">
           Last time, the page stopped while: <b>{crashed}</b>.{' '}
           {/WebLLM/.test(crashed)
-            ? 'This model is probably too big for this device. Any part already downloaded is kept. Try Gemma 3 · 1B (WebLLM), the smallest of the WebLLM models.'
+            ? /Gemma 3 · 1B/.test(crashed)
+              ? 'Safari reloaded the page: it ran out of memory. The download is kept, so trying again is quick.'
+              : 'Safari reloaded the page: it ran out of memory, so this model is probably too big for this device. The download is kept. Try Gemma 3 · 1B (WebLLM), the smallest WebLLM model.'
             : /^Preparing/.test(crashed)
             ? 'The download is saved, but this device ran out of memory while preparing the model (Safari then reloads the page). Try a smaller model: LFM2 · 350M or Gemma 3 · 270M.'
             : 'Safari reloads a page that runs out of memory. Try again, or try a smaller model (LFM2 · 350M or Gemma 3 · 270M).'}
