@@ -17,9 +17,9 @@ Decisions already made by the user (do not re-ask):
 
 The user was frustrated by the first version (SRD only + per-device PDF import + live-only wiki). Be direct, don't over-ask, and show progress on what they actually asked for. Don't substitute synthetic or mock data for the real thing without saying so.
 
-## ★ Version 1.0 — locked in on 27 Nov 2026 (git tag `v1.0`)
+## ★ Version 1.0 — locked in on 27 Nov 2026 (branch `release-1.0`)
 
-The user declared this the 1.0 version. If you are resuming, start here.
+The user declared this the 1.0 version. If you are resuming, start here. The branch `release-1.0` marks the exact 1.0 commit (this session could not create git tags or GitHub releases: 403); to restore 1.0, check out that branch. Keep developing on `main`.
 
 **What is live**
 - **Web app (PWA):** https://dsinkwell.github.io/D-and-D/ — repo `dsinkwell/D-and-D` (public), branch `main`, deployed by `.github/workflows/deploy.yml` on every push to `main` and weekly (Mondays) with a wiki refresh. Home-screen name "FR Reference", page title "3.5 Forgotten Realms Reference".
