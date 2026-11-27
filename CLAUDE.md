@@ -63,6 +63,11 @@ The user was frustrated by the first version (SRD only + per-device PDF import +
 - **Lab (hidden test page, `#/lab`, not linked):** written answers by a small open LLM on the device's GPU. `src/views/LabView.tsx` + `src/workers/write.worker.ts`. Uses transformers.js **v4** (npm alias `tjs4`, self-contained browser build with WebGPU) copied with its ONNX Runtime files into `public/lab/` by `scripts/copy-lab.mjs` (git-ignored; prebuild). Model files come from Hugging Face at runtime (cached in `transformers-cache`). Models offered: Qwen2.5 0.5B, LFM2 700M, Qwen3 0.6B, LFM2 1.2B, Gemma 3 1B, Llama 3.2 1B (q4f16 when the GPU has shader-f16, else q4). The prompt = Ask's direct answer + top 4 passages (highlight excerpts) + instructions. "Run the 5-question speed test" and "Copy results" produce a report the user pastes back. `#/lab?device=wasm` forces the processor.
 - Next: user runs #/lab on iPhone/iPad/Mac and sends results; if fast enough, add an optional "Write an answer" button to Ask (only on capable devices).
 
+## App updates
+
+- `registerType: 'prompt'`; `src/main.tsx` applies a new version (skip-waiting, then reload) only when `src/lib/busy.ts` reports nothing busy. Long operations wrap themselves in `whileBusy(name, fn)`: DB installs (OfflineData), the Ask model download, lab load/write. Test for this: publish a build mid-download, call `registration.update()`, check the page survives (note: a comment-only change produces identical bundles, so no update).
+- Lab downloads stream the model's ONNX files into `transformers-cache` (key = HF resolve URL, file list from `config.json` → `transformers.js_config.use_external_data_format`) before loading, so a crash while preparing keeps the download; a `__lab__/<model>/<dtype>` entry records the external-data files.
+
 ## Commands
 
 ```bash
