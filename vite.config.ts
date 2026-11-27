@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt', // applied by src/main.tsx when nothing is busy
       includeAssets: ['icons/*.png', 'icons/*.svg'],
       manifest: {
         name: '3.5 Forgotten Realms Reference',

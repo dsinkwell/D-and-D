@@ -10,7 +10,91 @@ type Msg =
   | { id: number; op: 'probe'; base: string }
   | { id: number; op: 'load'; model: string; dtype: string; device: string }
   | { id: number; op: 'generate'; messages: { role: string; content: string }[]; max: number }
-  | { id: number; op: 'unload' };
+  | { id: number; op: 'unload' }
+  | { id: number; op: 'stored'; models: string[]; dtype: string }
+  | { id: number; op: 'download'; model: string; dtype: string };
+
+// ------------------------------------------------------------------ downloads
+// The model's big ONNX files are streamed straight into the browser cache that transformers.js
+// reads from ("transformers-cache", keyed by the Hugging Face URL), without holding them in
+// memory. A download is then saved even if the next step (preparing the model) runs out of
+// memory, and the page can tell which models are already on the device.
+const HF = 'https://huggingface.co/';
+const CACHE = 'transformers-cache';
+const fileUrl = (model: string, f: string) => `${HF}${model}/resolve/main/${f}`;
+
+// Same rule transformers.js uses: config.json → transformers.js_config.use_external_data_format
+// says whether the weights sit in separate .onnx_data files, and how many.
+async function bigFiles(model: string, dtype: string): Promise<{ name: string; size: number }[]> {
+  const r = await fetch(fileUrl(model, 'config.json'));
+  if (!r.ok) throw new Error(`Could not reach Hugging Face (${r.status})`);
+  const ext = (await r.json())?.['transformers.js_config']?.use_external_data_format;
+  const onnx = `model_${dtype}.onnx`;
+  const raw = ext && typeof ext === 'object' ? ext[onnx] ?? ext['model.onnx'] : ext;
+  const chunks = raw === true ? 1 : typeof raw === 'number' ? raw : 0;
+  const names = [`onnx/${onnx}`];
+  for (let i = 0; i < chunks; i++) names.push(`onnx/${onnx}_data${i ? `_${i}` : ''}`);
+  // sizes for the progress bar (HEAD follows the redirect to the file server)
+  return Promise.all(
+    names.map(async (name) => {
+      try {
+        const h = await fetch(fileUrl(model, name), { method: 'HEAD' });
+        return { name, size: Number(h.headers.get('content-length') || 0) };
+      } catch {
+        return { name, size: 0 };
+      }
+    }),
+  );
+}
+
+async function isStored(model: string, dtype: string) {
+  try {
+    const c = await caches.open(CACHE);
+    const names = [`onnx/model_${dtype}.onnx`];
+    for (const n of names) if (!(await c.match(fileUrl(model, n)))) return false;
+    // external weights, when the model has them, are listed in the cached index of this model
+    const idx = await c.match(`${HF}__lab__/${model}/${dtype}`);
+    if (!idx) return false;
+    for (const n of (await idx.json()) as string[]) if (!(await c.match(fileUrl(model, n)))) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function download(id: number, model: string, dtype: string) {
+  const c = await caches.open(CACHE);
+  const files = await bigFiles(model, dtype);
+  const total = files.reduce((a, f) => a + f.size, 0);
+  let done = 0;
+  for (const f of files) {
+    const url = fileUrl(model, f.name);
+    if (await c.match(url)) {
+      done += f.size;
+      post({ id, progress: { loaded: done, total } });
+      continue;
+    }
+    const res = await fetch(url);
+    if (!res.ok || !res.body) throw new Error(`Download failed: ${f.name} (${res.status})`);
+    let last = 0;
+    const counter = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, ctl) {
+        done += chunk.byteLength;
+        if (done - last > 2e6) {
+          last = done;
+          post({ id, progress: { loaded: done, total } });
+        }
+        ctl.enqueue(chunk);
+      },
+    });
+    const headers = new Headers({ 'content-type': res.headers.get('content-type') || 'application/octet-stream' });
+    if (f.size) headers.set('content-length', String(f.size));
+    await c.put(url, new Response(res.body.pipeThrough(counter), { status: 200, headers }));
+  }
+  const extra = files.map((f) => f.name).filter((n) => n.includes('_data'));
+  await c.put(`${HF}__lab__/${model}/${dtype}`, new Response(JSON.stringify(extra), { headers: { 'content-type': 'application/json' } }));
+  post({ id, progress: { loaded: total, total } });
+}
 
 let T: any = null;
 let tok: any = null;
@@ -54,7 +138,14 @@ self.onmessage = async (ev: MessageEvent<Msg>) => {
   const m = ev.data;
   const reply = (data: unknown) => post({ id: m.id, ok: true, data });
   try {
-    if (m.op === 'probe') {
+    if (m.op === 'stored') {
+      const out: Record<string, boolean> = {};
+      for (const mid of m.models) out[mid] = await isStored(mid, m.dtype);
+      reply(out);
+    } else if (m.op === 'download') {
+      await download(m.id, m.model, m.dtype);
+      reply(true);
+    } else if (m.op === 'probe') {
       base = m.base;
       reply(await probe());
     }

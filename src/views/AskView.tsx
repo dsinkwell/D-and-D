@@ -8,6 +8,7 @@ import { navigate, Route } from '../lib/router';
 import { ask, askDownloaded, downloadAsk, kindLabel, prepareAsk, removeAsk, type AskResult } from '../lib/ask/engine';
 import { directAnswer, listAnswer, warmDirect, type Direct, type ListAnswer } from '../lib/ask/direct';
 import { highlight } from '../lib/ask/highlight';
+import { whileBusy } from '../lib/busy';
 
 const EXAMPLES = [
   'What is the range of fireball?',
@@ -202,7 +203,7 @@ function ModelCard({ onDone }: { onDone: () => void }) {
     setErr(null);
     setProg(0);
     try {
-      await downloadAsk((d, t) => setProg(d / t));
+      await whileBusy('ask-model', () => downloadAsk((d, t) => setProg(d / t)));
       onDone();
     } catch (e) {
       setErr(String((e as Error)?.message || e));

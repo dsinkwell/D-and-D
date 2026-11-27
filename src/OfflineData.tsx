@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon, Notice } from './components';
 import { DbName, installDb, InstallProgress, remoteManifest, RemoteManifest, removeDb, useDbStatus } from './lib/db';
 import { formatBytes } from './lib/storage';
+import { whileBusy } from './lib/busy';
 
 /** "20261126T0410" -> Date */
 export function versionDate(v?: string | null): Date | null {
@@ -41,7 +42,7 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
     setErr(null);
     setProgress({ received: 0, total: remote?.downloadBytes || 0, part: 0, parts: remote?.parts.length || 0 });
     try {
-      await installDb(name, setProgress, passphrase || pass || undefined);
+      await whileBusy(`install:${name}`, () => installDb(name, setProgress, passphrase || pass || undefined));
       onInstalled?.();
     } catch (e: any) {
       const msg = String(e?.message || e);

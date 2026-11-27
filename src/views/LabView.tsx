@@ -5,6 +5,7 @@ import { Header, Notice } from '../components';
 import { ask, type Passage } from '../lib/ask/engine';
 import { directAnswer } from '../lib/ask/direct';
 import { highlight, textOf } from '../lib/ask/highlight';
+import { whileBusy } from '../lib/busy';
 
 interface ModelChoice {
   id: string;
@@ -136,6 +137,7 @@ export default function LabView() {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [status, setStatusText] = useState('Checking this device…');
+  const [stored, setStored] = useState<Record<string, boolean>>({});
   const [crashed] = useState(lastCrumb);
   const setStatus = (t: string, keep = true) => {
     setStatusText(t);
@@ -160,30 +162,48 @@ export default function LabView() {
   const device = force || (dev?.webgpu ? 'webgpu' : 'wasm');
   const dtype = device === 'webgpu' && dev?.f16 ? 'q4f16' : 'q4';
 
+  const refreshStored = () =>
+    call<Record<string, boolean>>({ op: 'stored', models: MODELS.map((m) => m.id), dtype })
+      .then(setStored)
+      .catch(() => {});
+  useEffect(() => {
+    if (dev) refreshStored();
+  }, [dev, dtype]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const load = async (): Promise<boolean> => {
     setErr(null);
     setLoading(0);
     let ok = false;
     let shown = -1;
-    setStatus(`Loading ${model.name}: starting download`);
+    let phase = 'download';
     try {
-      const r = await call<{ loadMs: number; warmMs: number }>({ op: 'load', model: choice, dtype, device }, (m) => {
-        if (!m.progress?.total) return;
-        const f = m.progress.loaded / m.progress.total;
-        setLoading(f);
-        const pct = Math.floor(f * 10) * 10;
-        if (pct !== shown) {
-          shown = pct;
-          setStatus(pct >= 100 ? `Loading ${model.name}: preparing it on the ${device === 'webgpu' ? 'GPU' : 'processor'}` : `Loading ${model.name}: downloaded ${pct}%`);
-        }
-      });
+      // 1. download (streamed to storage; kept even if step 2 fails)
+      if (!stored[choice]) {
+        setStatus(`Downloading ${model.name}: 0%`);
+        await call({ op: 'download', model: choice, dtype }, (m) => {
+          if (!m.progress?.total) return;
+          const f = m.progress.loaded / m.progress.total;
+          setLoading(Math.min(f, 0.999));
+          const pct = Math.floor(f * 10) * 10;
+          if (pct !== shown) {
+            shown = pct;
+            setStatus(`Downloading ${model.name}: ${pct}%`);
+          }
+        });
+        setStored((st) => ({ ...st, [choice]: true }));
+      }
+      // 2. prepare: the model goes into memory and onto the GPU (the step that can run out of memory)
+      phase = 'prepare';
+      setLoading(1);
+      setStatus(`Preparing ${model.name} on the ${device === 'webgpu' ? 'GPU' : 'processor'} (download saved)`);
+      const r = await call<{ loadMs: number; warmMs: number }>({ op: 'load', model: choice, dtype, device });
       setLoaded({ id: choice, dtype, device, ...r });
       setStatus(`${model.name} is ready.`, false);
       ok = true;
     } catch (e) {
       const msg = String((e as Error).message || e);
       setErr(msg);
-      setStatus(`Loading ${model.name} failed: ${msg}`, false);
+      setStatus(`${phase === 'download' ? 'Downloading' : 'Preparing'} ${model.name} failed: ${msg}`, false);
     }
     setLoading(null);
     return ok;
@@ -219,13 +239,17 @@ export default function LabView() {
   const runOne = async () => {
     if (!q.trim() || busy || loading !== null) return;
     setBusy(true);
-    if (await ready()) await write(q.trim());
+    await whileBusy('lab', async () => {
+      if (await ready()) await write(q.trim());
+    });
     setBusy(false);
   };
   const runTest = async () => {
     if (busy || loading !== null) return;
     setBusy(true);
-    if (await ready()) for (const t of TEST_QUESTIONS) await write(t);
+    await whileBusy('lab', async () => {
+      if (await ready()) for (const t of TEST_QUESTIONS) await write(t);
+    });
     setBusy(false);
   };
 
@@ -261,8 +285,10 @@ export default function LabView() {
 
       {crashed && (
         <Notice kind="warn">
-          Last time, the page stopped while: <b>{crashed}</b>. Safari reloads a page that runs out of memory, so this model is probably too big for this
-          device. Try a smaller one (LFM2 · 350M or Gemma 3 · 270M).
+          Last time, the page stopped while: <b>{crashed}</b>.{' '}
+          {/^Preparing/.test(crashed)
+            ? 'The download is saved, but this device ran out of memory while preparing the model (Safari then reloads the page). Try a smaller model: LFM2 · 350M or Gemma 3 · 270M.'
+            : 'Safari reloads a page that runs out of memory. Try again, or try a smaller model (LFM2 · 350M or Gemma 3 · 270M).'}
         </Notice>
       )}
       <p className="lab-status">
@@ -301,7 +327,7 @@ export default function LabView() {
               <input type="radio" name="model" checked={choice === m.id} onChange={() => setChoice(m.id)} disabled={loading !== null || busy} />
               <span>
                 <b>{m.name}</b> <span className="muted">· {dtype === 'q4f16' ? m.mb : Math.round(m.mb * 1.6)} MB · {m.note}</span>
-                {loaded?.id === m.id && <span className="lab-ok"> loaded</span>}
+                {loaded?.id === m.id ? <span className="lab-ok"> · ready</span> : stored[m.id] ? <span className="lab-ok"> · downloaded</span> : null}
               </span>
             </label>
           ))}
@@ -311,11 +337,11 @@ export default function LabView() {
             <div className="progress-bar">
               <div style={{ width: `${Math.round(loading * 100)}%` }} />
             </div>
-            <span>{loading < 1 ? `Downloading ${Math.round(loading * 100)}% of ${model.mb} MB` : 'Preparing the model on the GPU…'}</span>
+            <span>{loading < 1 ? `Downloading ${Math.round(loading * 100)}% of ${model.mb} MB` : `Preparing the model on the ${device === 'webgpu' ? 'GPU' : 'processor'}…`}</span>
           </div>
         ) : (
-          <button className="btn primary" onClick={() => void load()} disabled={!dev || busy || loaded?.id === choice}>
-            {loaded?.id === choice ? 'Loaded' : `Load ${model.name}`}
+          <button className="btn primary" onClick={() => void whileBusy('lab', load)} disabled={!dev || busy || loaded?.id === choice}>
+            {loaded?.id === choice ? 'Loaded' : stored[choice] ? `Load ${model.name} (downloaded)` : `Download and load ${model.name}`}
           </button>
         )}
         {loaded && (
@@ -389,6 +415,7 @@ export default function LabView() {
             await call({ op: 'unload' }).catch(() => {});
             await caches.delete('transformers-cache');
             setLoaded(null);
+            setStored({});
           }}
         >
           Delete downloaded test models
