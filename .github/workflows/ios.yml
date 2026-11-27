@@ -1,0 +1,105 @@
+# Builds the native app (iPhone, iPad, Apple-silicon Mac) and uploads it to TestFlight.
+#
+# Needs four repository secrets (Settings → Secrets and variables → Actions):
+#   APPLE_TEAM_ID   – the 10-character Team ID (developer.apple.com → Membership)
+#   ASC_KEY_ID      – App Store Connect API key ID
+#   ASC_ISSUER_ID   – App Store Connect API issuer ID
+#   ASC_KEY_P8      – the contents of the downloaded AuthKey_XXXX.p8 file
+# Without them it still compiles the app (unsigned) to check the native code builds.
+#
+# Runs by hand (Actions → "iOS app" → Run workflow), on pushes to the native-app branch, and
+# monthly so a fresh TestFlight build is always there (TestFlight builds expire after 90 days).
+name: iOS app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [native-app]
+  schedule:
+    - cron: '23 7 1 * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      HAS_SIGNING: ${{ secrets.ASC_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
+      - name: Build the web app and copy it into the iOS project
+        run: |
+          npm run build
+          node scripts/native-web.mjs
+          npx cap sync ios
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Compile check (no signing secrets yet)
+        if: env.HAS_SIGNING != 'true'
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40
+          echo "::notice::Compiled OK. Add the four signing secrets to upload builds to TestFlight."
+
+      - name: Archive (signed)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive | tail -60
+
+      - name: Upload to TestFlight
+        if: env.HAS_SIGNING == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40
+          echo "::notice::Build ${{ github.run_number }} uploaded. It appears in TestFlight after Apple finishes processing (usually 5–15 minutes)."

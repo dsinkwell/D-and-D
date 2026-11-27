@@ -2,9 +2,8 @@
 // fast? The Ask search finds the passages; the model writes a short answer from them.
 import { useEffect, useState } from 'react';
 import { Header, Notice } from '../components';
-import { ask, type Passage } from '../lib/ask/engine';
-import { directAnswer } from '../lib/ask/direct';
-import { highlight, textOf } from '../lib/ask/highlight';
+import { type Passage } from '../lib/ask/engine';
+import { buildPrompt } from '../lib/ask/prompt';
 import { whileBusy } from '../lib/busy';
 
 interface ModelChoice {
@@ -40,10 +39,6 @@ const TEST_QUESTIONS = [
   'How do I become a Red Wizard?',
 ];
 
-const INSTRUCTIONS =
-  'You answer questions about Dungeons & Dragons 3.5 and the Forgotten Realms. Use only the sources below. ' +
-  'Answer in 2 to 4 plain sentences. Name the source you used in brackets, like [PHB p. 57]. ' +
-  'If the sources do not answer the question, say so.';
 
 interface Stats {
   promptTokens: number;
@@ -95,18 +90,9 @@ function call<T>(msg: Record<string, unknown>, on?: (m: any) => void): Promise<T
 
 // ------------------------------------------------------------------ prompt
 
-async function buildPrompt(q: string) {
-  const t0 = performance.now();
-  const [direct, found] = await Promise.all([directAnswer(q).catch(() => null), ask(q, 6)]);
-  const sources = found.passages.slice(0, 4);
-  const lines: string[] = [];
-  if (direct) lines.push(`[${direct.source}] ${direct.title}: ${textOf(direct.html)}`);
-  for (const p of sources) {
-    const ex = textOf(highlight(p.html, q, 520, p.title).excerpt.replace(/<\/?mark>/g, ''));
-    lines.push(`[${p.label}] ${p.title}: ${ex}`);
-  }
-  const content = `${INSTRUCTIONS}\n\nSources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`;
-  return { messages: [{ role: 'user', content }], sources, searchMs: Math.round(performance.now() - t0) };
+async function buildLabPrompt(q: string) {
+  const b = await buildPrompt(q);
+  return { messages: [{ role: 'user', content: `${b.instructions}\n\n${b.prompt}` }], sources: b.sources, searchMs: b.searchMs };
 }
 
 // iPhone/iPad Safari silently reloads a page that runs out of memory. Remember the step in
@@ -255,7 +241,7 @@ export default function LabView() {
     setRuns((rs) => [{ ...run }, ...rs]);
     try {
       setStatus(`Searching for sources: “${question}”`);
-      const p = await buildPrompt(question);
+      const p = await buildLabPrompt(question);
       run.sources = p.sources;
       run.searchMs = p.searchMs;
       show();

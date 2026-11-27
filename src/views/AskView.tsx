@@ -9,6 +9,8 @@ import { ask, askDownloaded, downloadAsk, kindLabel, prepareAsk, removeAsk, type
 import { directAnswer, listAnswer, warmDirect, type Direct, type ListAnswer } from '../lib/ask/direct';
 import { highlight } from '../lib/ask/highlight';
 import { whileBusy } from '../lib/busy';
+import { prewarmWriter, writeAnswer, writerAvailability, type Written } from '../lib/ask/writer';
+import type { Passage } from '../lib/ask/engine';
 
 const EXAMPLES = [
   'What is the range of fireball?',
@@ -47,6 +49,7 @@ export default function AskView({ route }: { route: Route }) {
   const [busy, setBusy] = useState(false);
   const [ans, setAns] = useState<Answer | null>(null);
   const [model, setModel] = useState<boolean | null>(null);
+  const [canWrite, setCanWrite] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -55,6 +58,10 @@ export default function AskView({ route }: { route: Route }) {
       if (ok) prepareAsk().catch(() => {}); // warm up while the user types
     });
     warmDirect();
+    writerAvailability().then((a) => {
+      setCanWrite(a.available);
+      if (a.available) prewarmWriter();
+    });
     if (!routeQ) inputRef.current?.focus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -128,6 +135,8 @@ export default function AskView({ route }: { route: Route }) {
 
       {ans && (
         <div className={`ask-results ${busy ? 'stale' : ''}`} data-q={ans.q}>
+          {canWrite && <WriteCard key={ans.q} q={ans.q} />}
+
           {ans.direct && (
             <a className="ask-direct" href={ans.direct.href}>
               <p dangerouslySetInnerHTML={{ __html: ans.direct.html }} />
@@ -249,5 +258,57 @@ export function AskModelSettings() {
         <Icon name="trash" size={16} /> Remove model
       </button>
     </section>
+  );
+}
+
+/** Native app: "Write an answer" with Apple's on-device model, from the passages Ask found. */
+function WriteCard({ q }: { q: string }) {
+  const [state, setState] = useState<'idle' | 'writing' | 'done' | 'error'>('idle');
+  const [text, setText] = useState('');
+  const [sources, setSources] = useState<Passage[]>([]);
+  const [info, setInfo] = useState<Written | null>(null);
+  const [err, setErr] = useState('');
+  const go = async () => {
+    setState('writing');
+    setText('');
+    setErr('');
+    try {
+      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => setSources(b.sources)));
+      setText(w.text);
+      setInfo(w);
+      setState('done');
+    } catch (e) {
+      setErr(String((e as Error)?.message || e));
+      setState('error');
+    }
+  };
+  if (state === 'idle')
+    return (
+      <button className="btn ask-write-btn" onClick={go}>
+        <Icon name="ask" size={18} /> Write an answer
+      </button>
+    );
+  return (
+    <div className="ask-written">
+      <p className="ask-written-text">{text || (state === 'writing' ? 'Writing…' : '')}</p>
+      {err && <Notice kind="error">{err}</Notice>}
+      {sources.length > 0 && (
+        <p className="ask-written-src">
+          Written on this device by Apple Intelligence from:{' '}
+          {sources.map((p, i) => (
+            <a key={p.key} href={p.href}>
+              {i ? ', ' : ''}
+              {p.title} ({p.label})
+            </a>
+          ))}
+          {info && <span className="muted"> · {(info.totalMs / 1000).toFixed(1)} s</span>}
+        </p>
+      )}
+      {state !== 'writing' && (
+        <button className="btn subtle" onClick={go}>
+          Write again
+        </button>
+      )}
+    </div>
   );
 }

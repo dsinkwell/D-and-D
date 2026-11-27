@@ -1,4 +1,5 @@
 // Main-thread client for the SQLite worker (src/workers/sqlite.worker.ts).
+import { isNative, WEB_HOME } from './platform';
 import { useEffect, useState } from 'react';
 import { requestPersistence } from './storage';
 
@@ -82,7 +83,9 @@ export async function isInstalled(name: DbName) {
 // ------------------------------------------------------------------ data
 
 // Absolute URL: the worker resolves relative URLs against its own script location.
-export const dataBase = (name: DbName) => new URL(`${import.meta.env.BASE_URL}data/${name}/`, window.location.href).href;
+// The native app doesn't bundle the big data packs; it downloads them from the published site.
+export const dataBase = (name: DbName) =>
+  isNative() ? `${WEB_HOME}data/${name}/` : new URL(`${import.meta.env.BASE_URL}data/${name}/`, window.location.href).href;
 
 export interface RemoteManifest {
   name: string;
