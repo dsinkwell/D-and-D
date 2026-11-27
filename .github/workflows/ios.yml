@@ -7,14 +7,15 @@
 #   ASC_KEY_P8      – the contents of the downloaded AuthKey_XXXX.p8 file
 # Without them it still compiles the app (unsigned) to check the native code builds.
 #
-# Runs by hand (Actions → "iOS app" → Run workflow), on pushes to the native-app branch, and
+# Runs by hand (Actions → "iOS app" → Run workflow), on pushes to main that touch the app, and
 # monthly so a fresh TestFlight build is always there (TestFlight builds expire after 90 days).
 name: iOS app
 
 on:
   workflow_dispatch:
   push:
-    branches: [native-app]
+    branches: [main]
+    paths: ['src/**', 'ios/**', 'public/**', 'scripts/native-*.mjs', 'capacitor.config.ts', 'package*.json', '.github/workflows/ios.yml']
   schedule:
     - cron: '23 7 1 * *'
 
