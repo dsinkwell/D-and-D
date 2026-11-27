@@ -1912,6 +1912,15 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
 
 /* ------------------------------------------------------------------ lab (hidden test page) */
 
+.lab-status {
+  font-size: 14px;
+  margin: 8px 2px 12px;
+  color: var(--muted);
+}
+.lab-status b {
+  color: var(--text);
+  font-weight: 600;
+}
 .lab-card h2 {
   font-size: 17px;
 }

@@ -13,6 +13,8 @@ interface ModelChoice {
   note: string;
 }
 const MODELS: ModelChoice[] = [
+  { id: 'onnx-community/LFM2-350M-ONNX', name: 'LFM2 · 350M', mb: 255, note: 'tiny; try this first on iPhone' },
+  { id: 'onnx-community/gemma-3-270m-it-ONNX', name: 'Gemma 3 · 270M', mb: 273, note: 'tiny' },
   { id: 'onnx-community/Qwen2.5-0.5B-Instruct', name: 'Qwen 2.5 · 0.5B', mb: 483, note: 'smallest, fastest' },
   { id: 'onnx-community/LFM2-700M-ONNX', name: 'LFM2 · 700M', mb: 496, note: 'built for phones' },
   { id: 'onnx-community/Qwen3-0.6B-ONNX', name: 'Qwen 3 · 0.6B', mb: 570, note: 'newer, small' },
@@ -69,6 +71,11 @@ function call<T>(msg: Record<string, unknown>, on?: (m: any) => void): Promise<T
       if (ev.data.ok) h.res(ev.data.data);
       else h.rej(new Error(ev.data.error));
     };
+    worker.onerror = (e) => {
+      for (const h of pending.values()) h.rej(new Error(`The model worker stopped: ${e.message || 'unknown error'}`));
+      pending.clear();
+      worker = null;
+    };
   }
   const id = ++seq;
   return new Promise<T>((res, rej) => {
@@ -93,6 +100,27 @@ async function buildPrompt(q: string) {
   return { messages: [{ role: 'user', content }], sources, searchMs: Math.round(performance.now() - t0) };
 }
 
+// iPhone/iPad Safari silently reloads a page that runs out of memory. Remember the step in
+// progress so the reloaded page can say where it stopped.
+const CRUMB = 'lab-step';
+const crumb = (step: string | null) => {
+  try {
+    if (step) localStorage.setItem(CRUMB, JSON.stringify({ step, at: Date.now() }));
+    else localStorage.removeItem(CRUMB);
+  } catch {
+    /* private mode */
+  }
+};
+const lastCrumb = (): string | null => {
+  try {
+    const c = JSON.parse(localStorage.getItem(CRUMB) || 'null');
+    localStorage.removeItem(CRUMB);
+    return c && Date.now() - c.at < 30 * 60 * 1000 ? c.step : null;
+  } catch {
+    return null;
+  }
+};
+
 const clean = (s: string) => s.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
 
 // ------------------------------------------------------------------ view
@@ -107,9 +135,23 @@ export default function LabView() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [status, setStatusText] = useState('Checking this device…');
+  const [crashed] = useState(lastCrumb);
+  const setStatus = (t: string, keep = true) => {
+    setStatusText(t);
+    crumb(keep ? t : null);
+  };
 
   useEffect(() => {
-    call<Record<string, any>>({ op: 'probe', base: new URL(import.meta.env.BASE_URL, location.href).href }).then(setDev).catch((e) => setDev({ webgpu: false, error: String(e) }));
+    call<Record<string, any>>({ op: 'probe', base: new URL(import.meta.env.BASE_URL, location.href).href })
+      .then((d) => {
+        setDev(d);
+        setStatusText('Pick a model and tap Load.');
+      })
+      .catch((e) => {
+        setDev({ webgpu: false, error: String(e) });
+        setStatusText(`Device check failed: ${String((e as Error)?.message || e)}`);
+      });
   }, []);
 
   const model = MODELS.find((m) => m.id === choice)!;
@@ -122,14 +164,26 @@ export default function LabView() {
     setErr(null);
     setLoading(0);
     let ok = false;
+    let shown = -1;
+    setStatus(`Loading ${model.name}: starting download`);
     try {
       const r = await call<{ loadMs: number; warmMs: number }>({ op: 'load', model: choice, dtype, device }, (m) => {
-        if (m.progress?.total) setLoading(m.progress.loaded / m.progress.total);
+        if (!m.progress?.total) return;
+        const f = m.progress.loaded / m.progress.total;
+        setLoading(f);
+        const pct = Math.floor(f * 10) * 10;
+        if (pct !== shown) {
+          shown = pct;
+          setStatus(pct >= 100 ? `Loading ${model.name}: preparing it on the ${device === 'webgpu' ? 'GPU' : 'processor'}` : `Loading ${model.name}: downloaded ${pct}%`);
+        }
       });
       setLoaded({ id: choice, dtype, device, ...r });
+      setStatus(`${model.name} is ready.`, false);
       ok = true;
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      const msg = String((e as Error).message || e);
+      setErr(msg);
+      setStatus(`Loading ${model.name} failed: ${msg}`, false);
     }
     setLoading(null);
     return ok;
@@ -142,10 +196,12 @@ export default function LabView() {
     const show = () => setRuns((rs) => rs.map((r) => (r.n === run.n ? { ...run } : r)));
     setRuns((rs) => [{ ...run }, ...rs]);
     try {
+      setStatus(`Searching for sources: “${question}”`);
       const p = await buildPrompt(question);
       run.sources = p.sources;
       run.searchMs = p.searchMs;
       show();
+      setStatus(`Writing an answer with ${loaded?.id.split('/')[1] || model.name}: “${question}”`);
       run.stats = await call<Stats>({ op: 'generate', messages: p.messages, max: 180 }, (m) => {
         if (m.text) {
           run.answer += m.text;
@@ -157,6 +213,7 @@ export default function LabView() {
     }
     run.answer = clean(run.answer);
     show();
+    setStatus(run.error ? `Writing failed: ${run.error}` : 'Done.', false);
   };
 
   const runOne = async () => {
@@ -201,6 +258,16 @@ export default function LabView() {
   return (
     <div className="page lab-page">
       <Header title="Written answers (test)" subtitle="On-device AI speed test" />
+
+      {crashed && (
+        <Notice kind="warn">
+          Last time, the page stopped while: <b>{crashed}</b>. Safari reloads a page that runs out of memory, so this model is probably too big for this
+          device. Try a smaller one (LFM2 · 350M or Gemma 3 · 270M).
+        </Notice>
+      )}
+      <p className="lab-status">
+        Status: <b>{status}</b>
+      </p>
 
       <section className="card lab-card">
         <h2>This device</h2>
