@@ -1,5 +1,6 @@
 // Native app only: Apple's on-device model writes a short answer from the Ask passages
 // (ios/App/App/WriterPlugin.swift). On the web this reports "not available".
+import { registerPlugin } from '@capacitor/core';
 import { isNative } from '../platform';
 import { buildPrompt, type BuiltPrompt } from './prompt';
 
@@ -10,8 +11,11 @@ interface WriterPlugin {
   addListener(event: 'writer', fn: (d: { id: string; text: string }) => void): Promise<{ remove: () => Promise<void> }>;
 }
 
-let plugin: Promise<WriterPlugin> | null = null;
-const getPlugin = () => (plugin ??= import('@capacitor/core').then(({ registerPlugin }) => registerPlugin<WriterPlugin>('Writer')));
+// Note: a Capacitor plugin object must never be the result of a promise. It answers every
+// property as a native method, so `await`ing it calls a native "then" that never replies.
+// That bug made the availability check hang; create it synchronously instead.
+let plugin: WriterPlugin | null = null;
+const getPlugin = (): WriterPlugin => (plugin ??= registerPlugin<WriterPlugin>('Writer'));
 
 let avail: Promise<{ available: boolean; reason?: string }> | null = null;
 export function writerAvailability() {
@@ -22,7 +26,7 @@ export function writerAvailability() {
   const timeout = new Promise<{ available: boolean; reason: string }>((res) =>
     setTimeout(() => res({ available: false, reason: `no reply from the app's Writer plugin (registered: ${plugins()}; Writer available: ${C?.isPluginAvailable?.('Writer')})` }), 4000),
   );
-  avail ??= Promise.race([getPlugin().then((w) => w.availability()), timeout]).catch((e) => ({
+  avail ??= Promise.race([Promise.resolve().then(() => getPlugin().availability()), timeout]).catch((e) => ({
     available: false,
     reason: `${String(e?.message || e)} (registered: ${plugins()})`,
   }));
@@ -30,7 +34,7 @@ export function writerAvailability() {
 }
 
 export async function prewarmWriter() {
-  if ((await writerAvailability()).available) (await getPlugin()).prewarm({ instructions: (await import('./prompt')).INSTRUCTIONS }).catch(() => {});
+  if ((await writerAvailability()).available) getPlugin().prewarm({ instructions: (await import('./prompt')).INSTRUCTIONS }).catch(() => {});
 }
 
 export interface Written {
@@ -42,7 +46,7 @@ export interface Written {
 
 /** Search, then have the on-device model write the answer; onText gets the text so far. */
 export async function writeAnswer(q: string, onText: (text: string) => void, onSources?: (b: BuiltPrompt) => void): Promise<Written> {
-  const w = await getPlugin();
+  const w = getPlugin(); // not awaited: see note above
   const built = await buildPrompt(q);
   onSources?.(built);
   const id = Math.random().toString(36).slice(2);
