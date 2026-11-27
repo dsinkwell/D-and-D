@@ -37,6 +37,10 @@ MIC and MM2u were flattened into text by the first extraction, so Ask's table an
   column). Bookmark placement: a heading line that starts with a short title matches it.
 - Checked on the PHB: Combat Casting, Craft Rod, Craft Staff, Dodge, Run and Track now carry their own text.
 
+**Also on `v2`:** a fix in `line_words` (extract.py) for OCR'd books, whose words have no box of their own
+(the first full build crashed at Faiths & Pantheons with `KeyError: 'bbox'`). With it, the build runs
+through the OCR'd books.
+
 **Note:** at 23:00 UTC the owner's own session had finished the downloads and OCR and started the build
 (step 4 below) in its container. If that session survives, it commits the rebuilt pack to `v2` itself
 (commit message starting "Books: rebuilt pack"). **Check `git log origin/v2` first**; if that commit is

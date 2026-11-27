@@ -431,7 +431,7 @@ def line_words(line):
                 out.append(cur)
         else:
             text = s['text']
-            x0, y0, x1, y1 = s['bbox']
+            x0, y0, x1, y1 = s.get('bbox') or line['bbox']  # OCR lines: one box for the whole line
             n = max(1, len(text))
             for m in re.finditer(r'\S+', text):
                 out.append([x0 + (x1 - x0) * m.start() / n, y0, x0 + (x1 - x0) * m.end() / n, y1, m.group()])
