@@ -16,6 +16,11 @@ The original brainstorm is kept below the decisions.
 **Picked for 2.0, in this order**
 1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
 2. Ask quality test set, then cross-reference following.
+   - **2b. MUST COME BACK TO (user asked, 27 Nov): table extraction for the 10 books whose tables are
+     flattened into text** (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u). Needs the PDFs from the
+     user's Drive (ask them to share the folder by link), table detection in `scripts/books/extract.py`, and a
+     re-pack with the passphrase. Then re-run the Ask quality test and add table questions from those books.
+     Do this before 2.0 is called finished.
 3. Character spellbooks / lists (**per character, with spells-per-day tracking**) and homebrew
    entries, on one shared saved-data format. Sharing by **file** (option A below).
 4. iCloud sync across each person's own devices (native app only; the web app keeps data per device).
