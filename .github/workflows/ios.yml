@@ -130,4 +130,12 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40
+          # what the distribution-signed app ended up with (iCloud sync needs ubiquity-kvstore-identifier)
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa 2>/dev/null | head -1 || true)
+          if [ -n "$IPA" ]; then
+            mkdir -p "$RUNNER_TEMP/ipa" && unzip -q -o "$IPA" -d "$RUNNER_TEMP/ipa"
+            echo "Entitlements of the uploaded app:"; codesign -d --entitlements - "$RUNNER_TEMP"/ipa/Payload/*.app || true
+          else
+            echo "(the upload export leaves no .ipa to inspect)"
+          fi
           echo "::notice::Build ${{ github.run_number }} uploaded. It appears in TestFlight after Apple finishes processing (usually 5–15 minutes)."
