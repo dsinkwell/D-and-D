@@ -120,7 +120,13 @@ export default function SearchView({ route }: { route: Route }) {
   return (
     <div className="page search-page">
       <div className="search-top">
-        <h1 className="search-heading">3.5 Forgotten Realms Reference</h1>
+        <div className="search-title-row">
+          <h1 className="search-heading">3.5 Forgotten Realms Reference</h1>
+          {/* phones have no sidebar, so About & Settings lives here */}
+          <a className="settings-link" href="#/about" aria-label="About & Settings" title="About & Settings">
+            <Icon name="settings" size={24} />
+          </a>
+        </div>
         <AskBox />
         <form
           className="searchbar"

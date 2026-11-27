@@ -450,6 +450,26 @@ select {
   padding-top: 8px;
 }
 
+.search-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.search-title-row .search-heading {
+  flex: 1;
+}
+.settings-link {
+  color: var(--muted);
+  padding: 6px;
+  margin: 0 -6px 0 0;
+  border-radius: 10px;
+}
+@media (min-width: 900px) {
+  .settings-link {
+    display: none; /* the sidebar has About & Settings */
+  }
+}
+
 .search-heading {
   font-family: var(--sans);
   font-weight: 750;
