@@ -21,6 +21,7 @@ import { Category } from '../lib/srd';
 import { OfflineDataCard } from '../OfflineData';
 import { useAutolinked } from '../lib/autolink';
 import { AddSpellToCharacter } from './CharacterViews';
+import { AddToList } from './ListViews';
 
 const PASS_KEY = 'rc.books.pass.hint';
 
@@ -244,7 +245,10 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
         </div>
         {isRef && facts.length > 0 && <div className="entry-source">{facts.join(' · ')}</div>}
       </div>
-      {entry.kind === 'spell' && <AddSpellToCharacter title={entry.title} />}
+      <div className="entry-adds">
+        {entry.kind === 'spell' && <AddSpellToCharacter title={entry.title} />}
+        <AddToList item={{ key: mark.key, title: entry.title, href: mark.href, subtitle: mark.subtitle }} />
+      </div>
       {also.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">Also in:</span>

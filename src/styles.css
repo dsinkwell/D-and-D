@@ -2661,3 +2661,47 @@ input.num {
   text-align: left;
   padding: 8px 4px;
 }
+
+/* ---------------------------------------------------------------- lists */
+.entry-adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  align-items: flex-start;
+}
+.entry-adds > div {
+  flex: 1 1 auto;
+}
+.add-to-list {
+  margin: 6px 0 10px;
+}
+.add-to-list .row.linklike {
+  width: 100%;
+  text-align: left;
+  padding: 8px 4px;
+}
+.list-items li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.list-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.list-item-actions {
+  display: flex;
+  gap: 2px;
+}
+.list-note {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 14px;
+}

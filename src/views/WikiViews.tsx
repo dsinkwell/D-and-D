@@ -1,4 +1,5 @@
 import { MouseEvent, useEffect, useRef, useState } from 'react';
+import { AddToList } from './ListViews';
 import { BookmarkButton, Header, Icon, Loading, Notice, useOnline, PinButton } from '../components';
 import { getHistory, recordVisit } from '../lib/bookmarks';
 import { navigate, wikiHref } from '../lib/router';
@@ -269,6 +270,7 @@ function WikiArticle({ title }: { title: string }) {
         }
       />
       {err && <Notice kind="warn">{err.message}</Notice>}
+      <AddToList item={{ key: `wiki:${article.title}`, title: textOfTitle(article.displayTitle), href: wikiHref(article.title), subtitle: 'Realms Wiki' }} />
       {rules.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">3.5 rules:</span>
