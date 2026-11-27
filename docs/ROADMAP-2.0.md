@@ -24,6 +24,12 @@ The original brainstorm is kept below the decisions.
 7. Forgotten Realms tools (Calendar of Harptos, travel distances).
 8. TestFlight invite for the group (as **internal testers**, no Beta App Review) + first-run guide.
 
+**Progress (branch `v2`, not yet merged to `main`)**
+- Done: tap-to-link (`src/lib/autolink.ts`; audited on all 27 books), tap-to-roll dice
+  (`src/lib/rollers.ts`, `src/lib/dice.ts`, `src/DiceTray.tsx`; compact result bar, Adv./Dis. for the next d20).
+- Also fixed: the SRD skill list missed Appraise–Handle Animal (`scripts/build-srd.mjs`).
+- Testing books locally: unlock them in a Playwright profile with the passphrase from the user (never commit it).
+
 **Sharing homebrew with the group: option A, files.** Share → AirDrop/Messages/Mail; opening the file
 imports it (web app: share sheet or download, then "Import file…"). Re-importing an entry offers
 replace / keep both / skip. Lists and spellbooks share the same way. A live shared iCloud collection
