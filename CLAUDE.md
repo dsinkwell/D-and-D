@@ -46,6 +46,8 @@ The user declared this the 1.0 version. If you are resuming, start here. The bra
 
 ## Next: version 2.0 (in progress)
 
+**➜ HANDOFF (27 Nov, 23:00 UTC): check out branch `v2` and read `docs/HANDOFF.md` first** — the owner handed work to a team member mid-way through step 2b; it lists exactly what is done and the remaining commands.
+
 **27 Nov, 21:09 UTC: `v2` merged into `main`** (steps 1–3: tap-to-link, dice, Ask quality test + cross-references + table answers, characters, lists, homebrew/house rules, file sharing) → website deployed (run 24) and **TestFlight build 21** uploaded. Keep working on `v2`; merge again with the user's OK.
 
 **27 Nov, 22:02 UTC: second merge** (iCloud sync + Ask fixes from the on-device quality report) → website run 25, **TestFlight build 22**. **User confirmed (27 Nov): iCloud sync works between their iPhone and iPad** (the ad-hoc-signed entitlement survives Apple's distribution signing; no App ID change was needed).
