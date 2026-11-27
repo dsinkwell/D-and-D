@@ -105,10 +105,15 @@ export function highlight(html: string, q: string, size = 360, title = '', lead 
     let first = -1;
     let seen = 0;
     for (let i = 0; i < lo && seen < 3; i++) {
-      if (sents[i].length <= 40 || !/[.!?]$/.test(sents[i]) || /^[A-Z][\w ’'/()-]{1,28}:\s/.test(sents[i])) continue;
+      // (a run-in rule such as "Concealment Miss Chance: Concealment gives… a 20% chance…" is long and does count)
+      if (sents[i].length <= 40 || !/[.!?]$/.test(sents[i]) || (/^[A-Z][\w ’'/()-]{1,28}:\s/.test(sents[i]) && sents[i].length < 90)) continue;
       seen++;
       if (first < 0 || scoreOf(sents[i]) > scoreOf(sents[first])) first = i;
     }
+    // the sentence just before the excerpt, when it answers better ("Taking 10: When your character is
+    // not being threatened or distracted…" right before "Distractions or threats (such as combat)…")
+    const prev = lo - 1;
+    if (prev > first && sents[prev].length > 40 && /[.!?]$/.test(sents[prev]) && scoreOf(sents[prev]) >= Math.max(bestScore * 0.5, 1e-6)) first = prev;
     if (first >= 0 && first < lo) head = `${esc(sents[first].length > 300 ? sents[first].slice(0, 300) + '…' : sents[first])} ${first + 1 < lo ? '… ' : ''}`;
   }
   return { excerpt: head + (lo > 0 && !head ? '… ' : '') + parts.join(' ') + (hi < sents.length - 1 ? ' …' : ''), score: bestScore };

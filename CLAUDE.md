@@ -46,13 +46,15 @@ The user declared this the 1.0 version. If you are resuming, start here. The bra
 
 ## Next: version 2.0 (in progress)
 
-**➜ HANDOFF (27 Nov, 23:00 UTC): read `docs/HANDOFF.md` (on branch `v2`) first** — the owner handed work to a team member mid-way through step 2b; it lists exactly what is done and the remaining commands.
+**28 Nov: step 2b finished on `v2`** (rebuilt encrypted books pack 20261127T2310 + Ask excerpt fixes; quality 115/116). Not merged to `main` yet — ask the user. Details in ROADMAP-2.0.md step 2b.
+
+**➜ HANDOFF (27 Nov, 23:00 UTC; now superseded by the line above): read `docs/HANDOFF.md` (on branch `v2`) first** — the owner handed work to a team member mid-way through step 2b; it lists exactly what is done and the remaining commands.
 
 **27 Nov, 21:09 UTC: `v2` merged into `main`** (steps 1–3: tap-to-link, dice, Ask quality test + cross-references + table answers, characters, lists, homebrew/house rules, file sharing) → website deployed (run 24) and **TestFlight build 21** uploaded. Keep working on `v2`; merge again with the user's OK.
 
 **27 Nov, 22:02 UTC: second merge** (iCloud sync + Ask fixes from the on-device quality report) → website run 25, **TestFlight build 22**. **User confirmed (27 Nov): iCloud sync works between their iPhone and iPad** (the ad-hoc-signed entitlement survives Apple's distribution signing; no App ID change was needed).
 
-Plan and the user's decisions: **`docs/ROADMAP-2.0.md`**. **Owed to the user before 2.0 is finished:** step 2b there (table extraction for 10 books whose tables are flattened; needs the PDFs again). Work happens on branch **`v2`** (no workflow builds it). Ask the user before merging into `main` (deploys the website and builds a TestFlight app) or triggering any build/deploy. Doc-only commits to `main` use `[skip ci]`.
+Plan and the user's decisions: **`docs/ROADMAP-2.0.md`**. Step 2b (table extraction) is done on `v2`. Work happens on branch **`v2`** (no workflow builds it). Ask the user before merging into `main` (deploys the website and builds a TestFlight app) or triggering any build/deploy. Doc-only commits to `main` use `[skip ci]`.
 
 ## Architecture (current)
 

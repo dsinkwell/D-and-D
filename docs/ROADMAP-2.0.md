@@ -16,7 +16,14 @@ The original brainstorm is kept below the decisions.
 **Picked for 2.0, in this order**
 1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
 2. Ask quality test set, then cross-reference following.
-   - **2b. MUST COME BACK TO (user asked, 27 Nov): table extraction for the 10 books whose tables are
+   - **2b — done on `v2` (28 Nov, pack 20261127T2310; not yet merged to `main`).** Captioned tables now read
+     as tables (MoF 6→24/29, LEoF 16→23/35, FRCS 28→34/53, PoF 6→10/12; FRCS deity conversion and PoF/F&P
+     prestige-class tables checked); PHB Combat Casting, Craft Rod, Craft Staff, Dodge, Run, Track carry their
+     own text; entry counts steady (20,851 → 20,855); Ask quality 115/116 on the search levels. Leftovers: LEoF
+     Table 1–1 Feats, MoF prestige-class tables without numbers, PoF "Giving Orders" (dot leaders); 4 Complete
+     Scoundrel prestige classes (Malconvoker, Magical Trickster, Spellwarp Sniper…) are filed as rules; MM3
+     Thorn's heading sits after its stat block. Original note:
+   - **2b. (was) MUST COME BACK TO (user asked, 27 Nov): table extraction for the 10 books whose tables are
      flattened into text** (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u). Needs the PDFs from the
      user's Drive (ask them to share the folder by link), table detection in `scripts/books/extract.py`, and a
      re-pack with the passphrase. Then re-run the Ask quality test and add table questions from those books.

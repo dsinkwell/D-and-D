@@ -23,7 +23,17 @@ exactly where work stopped and how to finish the step in progress.
   for misaligned book text, house rules off during the test), the iOS workflow's entitlement logging,
   and the step 2b extraction fixes below. None of it is deployed yet.
 
-## In progress: step 2b — tables in 10 books + 6 misaligned PHB feats
+## ✔ Update, 28 Nov: step 2b is finished
+
+The owner's session completed the rebuild and committed it to `v2` ("Books: rebuilt pack…", version
+20261127T2310). Verified: entry counts steady (20,851 → 20,855), the 6 PHB feats correct, FRCS/PoF/F&P tables
+read as tables, Ask quality 115/116 (the one miss: "What is a longsword?" picks MM3's Thorn, whose heading
+sits after its stat block). Two Ask excerpt fixes came with it (`highlight.ts`: a long run-in rule such as
+"Concealment Miss Chance: …" counts as a lead sentence; the sentence right before the excerpt is kept when
+it answers the question). **Nothing below needs doing.** Next: merge `v2` into `main` when the owner says so,
+then step 5 of the plan.
+
+## (Done) step 2b — tables in 10 books + 6 misaligned PHB feats
 
 Goal (owed to the owner before 2.0 is finished): tables in FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP,
 MIC and MM2u were flattened into text by the first extraction, so Ask's table answers can't read them; and

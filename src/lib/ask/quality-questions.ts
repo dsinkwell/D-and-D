@@ -317,5 +317,8 @@ export const QUESTIONS: QualityQuestion[] = [
   { id: 'tbl-ring-protection', q: 'cost of a ring of protection +1', topic: 'magic', direct: '2,000 gp' },
   { id: 'tbl-horse', q: 'how much does a horse cost', topic: 'equipment', direct: '200 gp.*75 gp|75 gp.*200 gp' },
   { id: 'tbl-rapier-crit', q: 'critical range of a rapier', topic: 'equipment', direct: '18[–-]20' },
+  // Forgotten Realms tables re-read in step 2b (FRCS Table 1–1 Deity Conversion; F&P prestige classes)
+  { id: 'fr-deity-conversion', q: 'Which Forgotten Realms deity replaces Boccob?', topic: 'realms', needs: ['books'], prompt: ['Azuth'] },
+  { id: 'fr-arachne-church', q: 'Which church does the arachne prestige class serve?', topic: 'realms', needs: ['books'], prompt: ['Lolth'] },
   { id: 'tbl-not-a-table', q: 'What is a longsword?', topic: 'equipment', sources: ['Longsword', 'Weapons', 'Weapon Descriptions', 'Martial Weapons'] },
 ];
