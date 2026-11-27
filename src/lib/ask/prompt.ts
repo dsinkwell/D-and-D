@@ -2,7 +2,7 @@
 // trimmed to the sentences around the match, plus instructions. Shared by the native app's
 // "Write an answer" (Apple's on-device model) and the web test page (#/lab).
 import { ask, type Passage } from './engine';
-import { directAnswer } from './direct';
+import { directAnswer, type Direct } from './direct';
 import { highlight, textOf } from './highlight';
 
 export const INSTRUCTIONS =
@@ -17,20 +17,20 @@ export interface BuiltPrompt {
   searchMs: number;
 }
 
-export async function buildPrompt(q: string, nSources = 4, excerpt = 520): Promise<BuiltPrompt> {
-  const t0 = performance.now();
-  const [direct, found] = await Promise.all([directAnswer(q).catch(() => null), ask(q, nSources + 2)]);
-  const sources = found.passages.slice(0, nSources);
+/** Build the prompt from results already found (no second search). */
+export function promptFrom(q: string, direct: Direct | null, passages: Passage[], nSources = 4, excerpt = 520, searchMs = 0): BuiltPrompt {
+  const sources = passages.slice(0, nSources);
   const lines: string[] = [];
   if (direct) lines.push(`[${direct.source}] ${direct.title}: ${textOf(direct.html)}`);
   for (const p of sources) {
     const ex = textOf(highlight(p.html, q, excerpt, p.title).excerpt.replace(/<\/?mark>/g, ''));
     lines.push(`[${p.label}] ${p.title}: ${ex}`);
   }
-  return {
-    instructions: INSTRUCTIONS,
-    prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`,
-    sources,
-    searchMs: Math.round(performance.now() - t0),
-  };
+  return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}`, sources, searchMs };
+}
+
+export async function buildPrompt(q: string, nSources = 4, excerpt = 520): Promise<BuiltPrompt> {
+  const t0 = performance.now();
+  const [direct, found] = await Promise.all([directAnswer(q).catch(() => null), ask(q, nSources + 2)]);
+  return promptFrom(q, direct, found.passages, nSources, excerpt, Math.round(performance.now() - t0));
 }

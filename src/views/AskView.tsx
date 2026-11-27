@@ -9,7 +9,7 @@ import { ask, askDownloaded, downloadAsk, kindLabel, prepareAsk, removeAsk, type
 import { directAnswer, listAnswer, warmDirect, type Direct, type ListAnswer } from '../lib/ask/direct';
 import { highlight } from '../lib/ask/highlight';
 import { whileBusy } from '../lib/busy';
-import { prewarmWriter, writeAnswer, writerAvailability, type Written } from '../lib/ask/writer';
+import { autoWrite, prewarmWriter, setAutoWrite, writeAnswer, writerAvailability, type Written } from '../lib/ask/writer';
 import type { Passage } from '../lib/ask/engine';
 
 const EXAMPLES = [
@@ -61,7 +61,9 @@ export default function AskView({ route }: { route: Route }) {
     warmDirect();
     writerAvailability().then((a) => {
       setCanWrite(a.available);
-      if (!a.available && a.reason !== 'web') setWriteWhy(a.reason || 'unknown reason');
+      // Devices that can't run Apple Intelligence just get the normal Ask (no message). Only say
+      // something when the user can fix it; every reason is listed under About → Diagnostics.
+      if (!a.available && /Turn on Apple Intelligence|getting ready/i.test(a.reason || '')) setWriteWhy(a.reason!);
       if (a.available) prewarmWriter();
     });
     if (!routeQ) inputRef.current?.focus();
@@ -137,8 +139,15 @@ export default function AskView({ route }: { route: Route }) {
 
       {ans && (
         <div className={`ask-results ${busy ? 'stale' : ''}`} data-q={ans.q}>
-          {canWrite && <WriteCard key={ans.q} q={ans.q} />}
-          {!canWrite && writeWhy && <p className="muted ask-status">Write an answer isn’t available: {writeWhy}</p>}
+          {canWrite && (
+            <WriteCard
+              key={ans.q}
+              q={ans.q}
+              found={{ direct: ans.direct, passages: ans.result?.passages || [] }}
+              auto={autoWrite() && !ans.list}
+            />
+          )}
+          {!canWrite && writeWhy && <p className="muted ask-status">Written answers: {writeWhy}</p>}
 
           {ans.direct && (
             <a className="ask-direct" href={ans.direct.href}>
@@ -265,18 +274,26 @@ export function AskModelSettings() {
 }
 
 /** Native app: "Write an answer" with Apple's on-device model, from the passages Ask found. */
-function WriteCard({ q }: { q: string }) {
+function WriteCard({ q, found, auto }: { q: string; found: { direct: Direct | null; passages: Passage[] }; auto: boolean }) {
   const [state, setState] = useState<'idle' | 'writing' | 'done' | 'error'>('idle');
   const [text, setText] = useState('');
   const [sources, setSources] = useState<Passage[]>([]);
   const [info, setInfo] = useState<Written | null>(null);
   const [err, setErr] = useState('');
+  const started = useRef(false);
+  useEffect(() => {
+    // the Ask button writes the answer straight away (once per question)
+    if (auto && !started.current) {
+      started.current = true;
+      go();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const go = async () => {
     setState('writing');
     setText('');
     setErr('');
     try {
-      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => setSources(b.sources)));
+      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => setSources(b.sources), found.passages.length ? found : undefined));
       setText(w.text);
       setInfo(w);
       setState('done');
@@ -293,9 +310,9 @@ function WriteCard({ q }: { q: string }) {
     );
   return (
     <div className="ask-written">
-      <p className="ask-written-text">{text || (state === 'writing' ? 'Writing…' : '')}</p>
-      {err && <Notice kind="error">{err}</Notice>}
-      {sources.length > 0 && (
+      {(text || state === 'writing') && <p className="ask-written-text">{text || 'Writing…'}</p>}
+      {err && <p className="muted ask-status">Couldn’t write an answer ({err}). The search results below still apply.</p>}
+      {sources.length > 0 && !err && (
         <p className="ask-written-src">
           Written on this device by Apple Intelligence from:{' '}
           {sources.map((p, i) => (
@@ -313,5 +330,30 @@ function WriteCard({ q }: { q: string }) {
         </button>
       )}
     </div>
+  );
+}
+
+/** About page (native app with Apple Intelligence): write answers automatically or on request. */
+export function AutoWriteSetting() {
+  const [avail, setAvail] = useState(false);
+  const [on, setOn] = useState(autoWrite());
+  useEffect(() => void writerAvailability().then((a) => setAvail(a.available)), []);
+  if (!avail) return null;
+  return (
+    <section className="card">
+      <h2>Written answers</h2>
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => {
+            setOn(e.target.checked);
+            setAutoWrite(e.target.checked);
+          }}
+        />{' '}
+        Write answers automatically when you tap Ask (Apple Intelligence, on this device)
+      </label>
+      <p className="muted">When off, Ask shows the search results with a “Write an answer” button.</p>
+    </section>
   );
 }

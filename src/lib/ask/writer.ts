@@ -2,7 +2,9 @@
 // (ios/App/App/WriterPlugin.swift). On the web this reports "not available".
 import { registerPlugin } from '@capacitor/core';
 import { isNative } from '../platform';
-import { buildPrompt, type BuiltPrompt } from './prompt';
+import { buildPrompt, promptFrom, type BuiltPrompt } from './prompt';
+import type { Direct } from './direct';
+import type { Passage } from './engine';
 
 interface WriterPlugin {
   availability(): Promise<{ available: boolean; reason?: string }>;
@@ -45,9 +47,14 @@ export interface Written {
 }
 
 /** Search, then have the on-device model write the answer; onText gets the text so far. */
-export async function writeAnswer(q: string, onText: (text: string) => void, onSources?: (b: BuiltPrompt) => void): Promise<Written> {
+export async function writeAnswer(
+  q: string,
+  onText: (text: string) => void,
+  onSources?: (b: BuiltPrompt) => void,
+  found?: { direct: Direct | null; passages: Passage[] }, // results the Ask search already has
+): Promise<Written> {
   const w = getPlugin(); // not awaited: see note above
-  const built = await buildPrompt(q);
+  const built = found ? promptFrom(q, found.direct, found.passages) : await buildPrompt(q);
   onSources?.(built);
   const id = Math.random().toString(36).slice(2);
   const t0 = performance.now();
@@ -64,3 +71,20 @@ export async function writeAnswer(q: string, onText: (text: string) => void, onS
     await sub.remove();
   }
 }
+
+// "Write answers automatically" (native app): on unless turned off on the About page.
+const AUTO = 'ask-autowrite';
+export const autoWrite = () => {
+  try {
+    return localStorage.getItem(AUTO) !== '0';
+  } catch {
+    return true;
+  }
+};
+export const setAutoWrite = (on: boolean) => {
+  try {
+    localStorage.setItem(AUTO, on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+};
