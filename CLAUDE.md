@@ -46,7 +46,7 @@ The user declared this the 1.0 version. If you are resuming, start here. The bra
 
 ## Next: version 2.0 (in progress)
 
-**28 Nov: step 2b finished on `v2`** — books pack **20261128T0013** (replaces 20261127T2310, which had lost 21 MM2 monsters and mangled some class tables; see ROADMAP-2.0.md step 2b) + Ask excerpt fixes; quality 116/119 search checks. **Third merge into `main` (28 Nov, the user's OK):** step 2b pack, book names in the book filter menus, and a responsive type scale (`--fs-*` in `src/styles.css`); the push deploys the website and builds a TestFlight app. Keep working on `v2`.
+**28 Nov: step 2b finished on `v2`** — books pack **20261128T0013** (replaces 20261127T2310, which had lost 21 MM2 monsters and mangled some class tables; see ROADMAP-2.0.md step 2b) + Ask excerpt fixes; quality 116/119 search checks. **Third merge into `main` (28 Nov, the user's OK):** step 2b pack, book names in the book filter menus, and a responsive type scale (`--fs-*` in `src/styles.css`); → website run 26 and **TestFlight build 23** (both succeeded). Keep working on `v2`.
 
 **➜ HANDOFF (27 Nov, 23:00 UTC; now superseded by the line above): read `docs/HANDOFF.md` (on branch `v2`) first** — the owner handed work to a team member mid-way through step 2b; it lists exactly what is done and the remaining commands.
 
