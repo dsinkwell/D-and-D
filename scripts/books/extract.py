@@ -173,11 +173,192 @@ def word_quality(text):
     return good / len(toks)
 
 
+# Base attack bonus and save progressions of 3.0/3.5 classes and prestige classes, by class level
+PROGRESSIONS = {
+    'full': lambda n: n, 'three-quarters': lambda n: 3 * n // 4, 'half': lambda n: n // 2,
+    'good save': lambda n: 2 + n // 2, 'poor save': lambda n: n // 3,
+}
+
+
+def fix_progressions(grid):
+    """OCR misreads old-style digits in scanned class tables (F&P prints a 5 that reads as 3). A
+    base attack or save column that follows a standard progression in 70%+ of its rows has its
+    one or two outliers set to that progression's value; columns that fit no progression are left
+    as read. grid: [(row index, cells, boxes)], level ordinals ("1st") in the first column."""
+    lv = []
+    for _, row, _ in grid:
+        m = re.match(r'^(\d{1,2})(st|nd|rd|th)$', row[0] or '')
+        lv.append(int(m.group(1)) if m else None)
+    # a garbled level between two good ones ("6th" read as nothing, "7th" as "Thal"): levels count up by one
+    suffix = lambda n: 'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    for k in range(1, len(grid) - 1):
+        if lv[k] is None and lv[k - 1] and (lv[k + 1] == lv[k - 1] + 2 or (k + 2 < len(grid) and lv[k + 1] is None and lv[k + 2] == lv[k - 1] + 3)):
+            if sum(1 for c in grid[k][1][1:] if re.match(r'^[+\-–]\d', c or '')) >= 2:
+                lv[k] = lv[k - 1] + 1
+                grid[k][1][0] = f'{lv[k]}{suffix(lv[k])}'
+    data = [k for k, n in enumerate(lv) if n]
+    if len(data) < 5:
+        return
+    for c in range(1, len(grid[0][1])):
+        vals = {}
+        for k in data:
+            m = re.match(r'^\+?(\d{1,2})\b', grid[k][1][c] or '')
+            vals[k] = int(m.group(1)) if m else None
+        parsed = [k for k in data if vals[k] is not None]
+        if len(parsed) < len(data) * 0.6:
+            continue  # not a bonus column
+        for name, f in PROGRESSIONS.items():
+            fit = [k for k in data if vals[k] == f(lv[k])]
+            bad = [k for k in data if vals[k] != f(lv[k])]
+            if len(fit) >= max(4, len(data) * 0.7) and 0 < len(bad) <= 2:
+                for k in bad:
+                    old = grid[k][1][c] or ''
+                    rest = re.sub(r'^\+?\S*?(?=/|$)', '', old) if '/' in old else ''
+                    grid[k][1][c] = f'+{f(lv[k])}{rest}'
+                break
+
+
+# Values a real table row is made of: bonuses, levels, dice, prices and weights, percentages, d%
+# ranges, alignment codes, deity power ranks. Prose with artwork noise between its columns has few.
+TYPED_CELL = re.compile(
+    r'^[+\-–]?\d[\d,/+\-–]*\.?$|^\d{1,2}(st|nd|rd|th)$|^\d*d\d+([+\-–]\d+)?\*?$|^\d[\d,]*\s?(gp|sp|cp|lb\.?|ft\.?)$'
+    r'|\d+%|^\d{2}[–-]\d{2}$|^(L|N|C)(G|N|E)$|^N$|\((I|L|D|G|Int|Les|Dem)\)')
+
+
+def ocr_grid_tables(p):
+    """Tables on an OCR'd page, found by position: Tesseract reads each cell of a scanned table as
+    its own short line ("1st", "+0", "+2", "Familiar, spider affinity"), and the noise filter would
+    drop the numbers. Rows where 4+ cells line up in the same columns for 3+ rows in a row (plus up
+    to two heading rows just above) become one line per row with a span per cell, which the
+    ordinary table path reads. Returns (table lines, indices of the OCR lines used)."""
+    W, H = p['w'], p['h']
+    raw = [(i, l) for i, l in enumerate(p['lines'])
+           if W * 0.03 < l['bbox'][0] and l['bbox'][2] < W * 0.97 and l['text'].strip() and (l['bbox'][2] - l['bbox'][0]) >= 6
+           and H * 0.045 < l['bbox'][1] < H * 0.955]
+    raw.sort(key=lambda x: ((x[1]['bbox'][1] + x[1]['bbox'][3]) / 2, x[1]['bbox'][0]))
+    rows = []
+    for i, l in raw:
+        mid = (l['bbox'][1] + l['bbox'][3]) / 2
+        if rows and abs(mid - rows[-1]['mid']) < 4:
+            rows[-1]['cells'].append((i, l))
+        else:
+            rows.append({'mid': mid, 'cells': [(i, l)]})
+    for r in rows:
+        r['cells'].sort(key=lambda c: c[1]['bbox'][0])
+    good = lambda t: sum(ch.isalnum() for ch in t) >= max(1, len(t.strip().strip(':;,.')) * 0.5)
+
+    def short_clean(t):
+        t = re.sub(r'\s{2,}', ' ', t).strip()
+        if not t or len(t.split()) > 4 or t.endswith(':'):
+            return False
+        if re.match(r'^[+\-–]?\d[\d/+\-–]*[:;,.]?$|^\d{1,2}(st|nd|rd|th)$|^[ISl]st$|^Sth$|^\d+[–-]\d+$', t):
+            return True
+        return word_quality(t) >= 0.7 and sum(ch.isalpha() for ch in t) >= 2
+
+    def row_ok(r):
+        texts = [c[1]['text'] for c in r['cells']]
+        if sum(1 for t in texts if len(t.split()) > 6) >= 2 or sum(1 for t in texts if t.strip().endswith(':')) >= 2:
+            return False  # two columns of prose, or a stat block's "Label: value" pairs
+        return sum(1 for t in texts if short_clean(t)) >= 3
+    out_lines, used = [], set()
+    k = 0
+    while k < len(rows):
+        # a run of rows with 4+ readable cells, each close below the last
+        run = [k]
+        while run[-1] + 1 < len(rows):
+            r0, r1 = rows[run[-1]], rows[run[-1] + 1]
+            if r1['mid'] - r0['mid'] > 22:
+                break
+            if not row_ok(r1):
+                # a wrapped line of a long cell ("Tyche's curse 1/day-" / "luck infusion") between two rows
+                r2 = rows[run[-1] + 2] if run[-1] + 2 < len(rows) else None
+                if r2 is not None and r2['mid'] - r1['mid'] <= 22 and row_ok(r2) and len(r1['cells']) <= 3:
+                    run.extend([run[-1] + 1, run[-1] + 2])
+                    continue
+                break
+            run.append(run[-1] + 1)
+        if not row_ok(rows[k]) or len(run) < 3:
+            k += 1
+            continue
+        # column starts shared by at least half the rows
+        starts = collections.Counter()
+        for ri in run:
+            for _, l in rows[ri]['cells']:
+                starts[round(l['bbox'][0] / 8)] += 1
+        cols = sorted(x * 8 for x, n in starts.items() if n >= len(run) * 0.5)
+        aligned = lambda r: sum(1 for _, l in r['cells'] if any(abs(l['bbox'][0] - c) <= 8 for c in cols))
+        if len(cols) < 3 or sum(1 for ri in run if aligned(rows[ri]) >= 3) < len(run) * 0.7:
+            k += 1
+            continue
+        # heading rows just above (column names centred over the columns)
+        first = run[0]
+        for _ in range(2):
+            if first > 0 and rows[first]['mid'] - rows[first - 1]['mid'] <= 14 and len(rows[first - 1]['cells']) >= 3 \
+                    and all(min(cols) - 8 <= l['bbox'][0] for _, l in rows[first - 1]['cells']):
+                first -= 1
+        grid = []
+        for ri in range(first, run[-1] + 1):
+            cells = [(i, l) for i, l in rows[ri]['cells'] if l['bbox'][0] >= min(cols) - 8 and good(l['text'])]
+            if len(cells) < 2:
+                continue
+            # each cell in its column (by position), so a blank cell doesn't shift the rest left
+            row = [''] * len(cols)
+            boxes = [None] * len(cols)
+            for _, l in cells:
+                c = max([n for n, x in enumerate(cols) if x <= l['bbox'][0] + 8] or [0])
+                row[c] = (row[c] + ' ' + re.sub(r'\s{2,}', ' ', l['text']).strip()).strip()
+                boxes[c] = tuple(l['bbox']) if boxes[c] is None else (boxes[c][0], boxes[c][1], l['bbox'][2], l['bbox'][3])
+            if grid and not row[0] and sum(1 for c in row if c) <= 2 and any(grid[-1][1][1:]):
+                prev = grid[-1][1]  # a wrapped line of a long cell: add it to the row above
+                for n, c in enumerate(row):
+                    if c:
+                        prev[n] = (prev[n] + ' ' + c).strip()
+                continue
+            grid.append((ri, row, boxes))
+        # common OCR slips in class tables: "Sth" for 5th, "+0:" with a stray mark, "42" for +2 in a bonus column
+        for c in range(len(cols)):
+            vals = [g[1][c] for g in grid if g[1][c]]
+            bonus = sum(1 for v in vals if re.match(r'^[+\-–]\d', v)) >= len(vals) * 0.6
+            for _, row, _ in grid:
+                v = re.sub(r'^[SA](th)$', r'5\1', re.sub(r'^[lIA](st)$', r'1\1', row[c]))
+                v = re.sub(r'^\+[\]lI|](?=\s|$)', '+1', v)  # "+]" for +1
+                if re.match(r'^[+\-–]?\d+[:;,.]$', v):
+                    v = v[:-1]
+                if bonus and re.match(r'^4\d°?$', v):
+                    v = '+' + v[1]
+                row[c] = v
+        # prose with stray marks between its columns is not a table: real cells are short and
+        # readable (artwork noise reads as "BE aa pS Wave"); a printed contents page has dot leaders
+        filled = [c for _, row, _ in grid for c in row if c]
+        readable = sum(1 for c in filled if re.match(r'^[+\-–]?\d[\d,/+\-–%]*\.?$|^\d{1,2}(st|nd|rd|th)$', c) or word_quality(c) >= 0.6)
+        if (len(grid) < 3 or sum(1 for _, row, _ in grid if any(len(c.split()) > 8 for c in row)) >= len(grid) * 0.4
+                or readable < len(filled) * 0.75 or sum(1 for c in filled if re.search(r'\.\s?\.\s?\.', c)) > len(filled) * 0.1
+                or sum(1 for _, row, _ in grid if sum(1 for c in row if TYPED_CELL.search(c)) >= 2) < len(grid) * 0.5):
+            k = run[-1] + 1
+            continue
+        fix_progressions(grid)
+        for ri, row, boxes in grid:
+            y0 = min(b[1] for b in boxes if b); y1 = max(b[3] for b in boxes if b)
+            spans = [{'text': t if t else ' ', 'size': 7.0, 'font': 'OCR-Arial', 'flags': 0, 'color': 0, 'blank': not t,
+                      'bbox': b if b else (cols[n], y0, cols[n] + 4, y1)} for n, (t, b) in enumerate(zip(row, boxes))]
+            bbox = (min(sp['bbox'][0] for sp in spans), min(sp['bbox'][1] for sp in spans),
+                    max(sp['bbox'][2] for sp in spans), max(sp['bbox'][3] for sp in spans))
+            out_lines.append({'spans': spans, 'bbox': bbox, 'text': '  '.join(sp['text'] for sp in spans)})
+            used.update(i for i, _ in rows[ri]['cells'])
+        k = run[-1] + 1
+    return out_lines, used
+
+
 def page_lines_ocr(p):
     """OCR lines → blocks (Tesseract's own text blocks when recorded), then reading order."""
     W, H = p['w'], p['h']
     groups = {}
+    table_lines, in_table = ocr_grid_tables(p)
+    if table_lines:
+        groups['ocr-table'] = table_lines
     for i, l in enumerate(p['lines']):
+        if i in in_table:
+            continue
         text = re.sub(r'\s{2,}', ' ', l['text']).strip()
         alpha = sum(c.isalpha() for c in text)
         if len(text) < 3 or alpha < max(2, len(text) * 0.5):
@@ -413,14 +594,18 @@ def split_cells(line):
     cells, cur, last_x1 = [], [], None
     for s in line['spans']:
         if last_x1 is not None and s['bbox'][0] - last_x1 > 9:
-            cells.append(''.join(x['text'] for x in cur).strip())
+            cells.append(cur)
             cur = []
         cur.append(s)
         last_x1 = s['bbox'][2]
     if cur:
-        cells.append(''.join(x['text'] for x in cur).strip())
+        cells.append(cur)
     out = []
-    for c in cells:
+    for group in cells:
+        c = ''.join(x['text'] for x in group).strip()
+        if not c and any(x.get('blank') for x in group):
+            out.append('')  # a blank cell of an OCR'd table, kept so later cells stay in their columns
+            continue
         out.extend(x for x in re.split(r'\s{2,}', c) if x)  # “Fort  Ref  Will” set in one run
     return out
 
@@ -469,6 +654,111 @@ def is_caption_title(text):
     return len(text) <= 90 and not lower and not rest.endswith(('.', ',', '-', '–'))
 
 
+def span_cells(line, body_size):
+    """The cells of a line whose PDF text spans are separated by clear gaps ("Alchemical sleep gas",
+    "30 gp", "1 1/4 lb."), as [x0, y0, x1, y1, text]; None for a line set as one run of text (OCR
+    lines, prose). Spans closer than the gap (a word in italics) stay in one cell."""
+    spans = [s for s in line['spans'] if s['text'].strip()]
+    if len(spans) < 2:
+        return None
+    gap = body_size * 0.8
+    if not any(b['bbox'][0] - a['bbox'][2] > gap for a, b in zip(spans, spans[1:])):
+        return None
+    cells = []
+    for s in spans:
+        x0, y0, x1, y1 = s['bbox']
+        if cells and x0 - cells[-1][2] <= gap:
+            c = cells[-1]
+            c[2], c[1], c[3] = max(c[2], x1), min(c[1], y0), max(c[3], y1)
+            c[4] = (c[4] + ('' if c[4].endswith(' ') or s['text'].startswith(' ') else ' ') + s['text']).strip()
+        else:
+            cells.append([x0, y0, x1, y1, s['text'].strip()])
+    return cells
+
+
+def span_table(rows, from_spans, single=None):
+    """Columns from PDF span cells: when most rows are span cells with the same number of cells,
+    each column is where those rows' cells are centred (centred and right-aligned columns start at
+    different x), and every cell goes to the nearest column. Returns table rows, or None to fall
+    back to word positions."""
+    counts = collections.Counter(len(ws) for ws, sp in zip(rows, from_spans) if sp and len(ws) >= 2)
+    if not counts:
+        return None
+    n, freq = counts.most_common(1)[0]
+    if freq < max(2, len(rows) * 0.35):
+        return None
+    full = [ws for ws, sp in zip(rows, from_spans) if sp and len(ws) == n]
+    centre = [sorted((ws[i][0] + ws[i][2]) / 2 for ws in full)[len(full) // 2] for i in range(n)]
+    left = min(w[0] for ws in rows for w in ws)
+    table = []
+    for ws, sp in zip(rows, from_spans):
+        cells = [''] * n
+        if sp and len(ws) == n:
+            for i, w in enumerate(ws):
+                cells[i] = w[4]
+        elif len(ws) == 1 and ws[0][0] - left < 12:
+            cells[0] = ws[0][4]  # a group label, a note or a name alone on its row
+        else:
+            for w in ws:
+                k = min(range(n), key=lambda i: abs((w[0] + w[2]) / 2 - centre[i]))
+                cells[k] = (cells[k] + ' ' + w[4]).strip()
+        filled = sum(1 for c in cells if c)
+        prev_filled = sum(1 for c in table[-1] if c) if table else 0
+        # a continuation: every cell starts in lower case or carries on a cell that stopped mid-phrase
+        # ("Knowledge (history) 4 ranks," / "Great Fortitude"); "Claw bracer" under "Blade boot" starts a row
+        carries_on = table and all(
+            c[:1].islower() or re.search(r'(,|[–-]|\b(a|an|the|of|to|and|or|with|in|by|for|on))$', table[-1][k] or '')
+            for k, c in enumerate(cells) if c)
+        all_lower = filled and all(c[:1].islower() for c in cells if c)
+        if table and prev_filled >= 2 and ((not cells[0] and (filled <= max(1, n // 3) or carries_on)) or all_lower):
+            table[-1] = [(a + ' ' + b).strip() for a, b in zip(table[-1], cells)]  # a wrapped line
+        elif table and filled == 1 and cells[0] and prev_filled == 1 and table[-1][0] and not table[-1][0].endswith(('.', ':', '—')) and cells[0][:1].islower():
+            table[-1][0] += ' ' + cells[0]  # a note that wraps onto a second line
+        elif filled:
+            table.append(cells)
+    # heading lines above the first row with a number in it become one heading row
+    first = next((k for k, r in enumerate(table) if sum(1 for c in r if re.search(r'\d', c)) >= 2), 0)
+    # only short heading-like lines are joined: a feat table has few numbers, and its first rows are feats
+    heading_like = 0
+    while heading_like < len(table) and all(len(c.split()) <= 3 for c in table[heading_like] if c):
+        heading_like += 1
+    first = min(first, heading_like)
+    if 2 <= first <= 4:
+        # a group label among them ("Martial Weapons—Melee" above the column headings) goes after the heading row
+        labels = [r for r in table[:first] if r[0] and not any(r[1:]) and len(r[0].split()) >= 2]
+        heads = [r for r in table[:first] if not (r[0] and not any(r[1:]) and len(r[0].split()) >= 2)]
+        if heads:
+            table[:first] = [[' '.join(x for x in col if x).strip() for col in zip(*heads)]] + labels
+    if len(table) < 2 or sum(1 for r in table if sum(1 for c in r if c) >= 2) < max(2, len(table) * 0.5):
+        return None
+    return sizes_as_groups(table)
+
+
+SIZE_WORD = re.compile(r'^(Fine|Diminutive|Tiny|Small|Medium(-size)?|Large|Huge|Gargantuan|Colossal)$', re.I)
+
+
+def sizes_as_groups(table):
+    """A first column of size categories ("Small | Cutlass | 15 gp…", blank under the first of each
+    size) becomes group rows above the weapons, as the Player's Handbook prints them, so the weapon
+    names are the first column (Ask's table answers look rows up by it)."""
+    if len(table) < 3 or len(table[0]) < 3:
+        return table
+    body = [r for r in table[1:] if sum(1 for c in r if c) >= 3]
+    if not body or not all((not r[0] or SIZE_WORD.match(r[0])) for r in body) or sum(1 for r in body if r[0]) < 2:
+        return table
+    if not all(r[1] and re.search(r'[a-z]{3}', r[1], re.I) for r in body):
+        return table
+    out = [[table[0][1] or table[0][0]] + table[0][2:]]
+    for r in table[1:]:
+        if sum(1 for c in r if c) >= 3:
+            if r[0]:
+                out.append([r[0]] + [''] * (len(r) - 2))
+            out.append(r[1:])
+        else:
+            out.append([r[0]] + r[2:] if not r[1] else r[1:])
+    return out
+
+
 def caption_table(lines, li, W, body_size, levels):
     """The table printed under a caption, rebuilt from word positions: the lines below the
     caption within its column (found by position, not reading order: some PDFs store each
@@ -481,7 +771,12 @@ def caption_table(lines, li, W, body_size, levels):
     left_half = cx1 < W * 0.55
     right_half = cx0 > W * 0.45
     beside = any(l['bbox'][1] < cy1 + 60 and l['bbox'][3] > cy0 and (l['bbox'][0] > W * 0.5 if left_half else l['bbox'][2] < W * 0.5) for l in lines)
-    if left_half and beside:
+    # rows wider than a column right under the caption: a full-width table (FRCS Table 3–5's
+    # two-line "Range / Increment" heading put a word in the other half, which looked like a column)
+    wide_below = any(cy1 - 2 <= l['bbox'][1] <= cy1 + 45 and (l['bbox'][2] - l['bbox'][0]) > W * 0.6 for l in lines)
+    if wide_below:
+        band = (0, W)
+    elif left_half and beside:
         band = (0, W * 0.52)
     elif right_half and beside:
         band = (W * 0.48, W)
@@ -502,11 +797,20 @@ def caption_table(lines, li, W, body_size, levels):
             rows_l[-1]['bottom'] = max(rows_l[-1]['bottom'], y1)
             continue
         med = sorted(heights)[len(heights) // 2] if heights else h
-        if CAPTION.match(t) or CREDIT.match(t):
+        if CAPTION.match(t) or CREDIT.match(t) or (rows_l and re.match(r'^(Special|Note|Notes)\s*:', t)):
             break
         if y0 - last_y > max(med * 2.2, 12):
             break
         st = line_style(l)
+        # a group label inside the table ("Martial Weapons—Melee" over FRCS Table 3–5's rows): a short
+        # heading with rows of several cells right below it is a row, not the end of the table
+        if levels.get(st) and len(t.split()) <= 5 and st[1] <= body_size * 1.6:
+            below = [l2 for _, l2 in cand if l2['bbox'][1] >= y1 - 1][:2]
+            if any(len(span_cells(l2, body_size) or line_words(l2)) >= 3 and (span_cells(l2, body_size) or is_table_line(l2, body_size)) for l2 in below):
+                rows_l.append({'mid': (y0 + y1) / 2, 'bottom': y1, 'lines': [(j, l)]})
+                heights.append(h)
+                last_y = max(last_y, y1)
+                continue
         if levels.get(st) and st[1] > body_size * 1.1:
             break
         # a short heading standing alone on its row ends the table (ELH Table 1–25 read on into the
@@ -521,6 +825,14 @@ def caption_table(lines, li, W, body_size, levels):
     # running text after the table: a row that is one wide, gapless line ending a sentence
     cut = len(rows_l)
     for k, r in enumerate(rows_l):
+        # a paragraph opening with a bold run-in name ("Telepathy (Ex): A juvenile…") at the left of a
+        # row ends the table, even with another column's text beside it (LEoF Table 11–4)
+        if k >= 3:
+            lead = min((l for _, l in r['lines']), key=lambda l: l['bbox'][0])
+            s0 = lead['spans'][0]
+            if re.match(r'^[A-Z][\w’\' -]{1,40}( \((Ex|Su|Sp)\))?:\s', lead['text'].strip()) and s0['text'].strip() and (BOLD.search(s0['font']) or s0['font'] in LEAD_FONTS):
+                cut = k
+                break
         if k >= 3 and len(r['lines']) == 1:
             l = r['lines'][0][1]
             ws = line_words(l)
@@ -540,9 +852,25 @@ def caption_table(lines, li, W, body_size, levels):
     if len(rows_l) < 3:
         return None
     rows = []
+    from_spans = []
+    single = []
     for r in rows_l:
-        ws = sorted((w for _, l in r['lines'] for w in line_words(l)), key=lambda w: w[0])
+        # a line set as one run inside a row of several lines is one cell (LEoF Table 1–1's "Benefit")
+        cs = [span_cells(l, body_size) or ([[*l['bbox'], l['text'].strip()]] if len(r['lines']) > 1 and len([s for s in l['spans'] if s['text'].strip()]) == 1 else None)
+              for _, l in r['lines']]
+        ws = sorted((w for (_, l), c in zip(r['lines'], cs) for w in (c or line_words(l))), key=lambda w: w[0])
+        if len(r['lines']) == 1 and cs[0] is None and len([s for s in r['lines'][0][1]['spans'] if s['text'].strip()]) == 1:
+            ws = [[*r['lines'][0][1]['bbox'], r['lines'][0][1]['text'].strip()]]  # a label or note set as one run
+            single.append(True)
+        else:
+            single.append(False)
         rows.append(ws)
+        from_spans.append(all(c is not None for c in cs))
+    by_centre = span_table(rows, from_spans, single) if any(from_spans) else None
+    if by_centre is None and any(single):
+        rows = [ws if not one else line_words(rows_l[k]['lines'][0][1]) for k, (ws, one) in enumerate(zip(rows, single))]
+    if by_centre is not None:
+        return by_centre, {j for r in rows_l for j, _ in r['lines']}
     # column starts: a word after a gap of at least ~1.5 spaces, seen in many rows
     gap_min = body_size * 0.45
     starts = collections.Counter()
@@ -571,13 +899,16 @@ def caption_table(lines, li, W, body_size, levels):
     table = []
     for ri, ws in enumerate(rows):
         cells = [''] * len(merged)
+        if ri < first_data and first_data <= 4:
+            # heading lines: place each word (a span can hold two headings set close: "Level Attack Bonus")
+            ws = sorted((w for _, l in rows_l[ri]['lines'] for w in line_words(l)), key=lambda w: w[0])
         for w in ws:
             if ri < first_data and first_data <= 4:
                 k = min(range(len(mids)), key=lambda i: abs((w[0] + w[2]) / 2 - mids[i]))
             else:
                 k = max([i for i, a in enumerate(merged) if a <= w[0] + 3] or [0])
             cells[k] = (cells[k] + ' ' + w[4]).strip()
-        if table and not cells[0] and any(cells) and not (ri < first_data and first_data <= 4):
+        if table and not cells[0] and 0 < sum(1 for c in cells if c) <= max(1, len(cells) // 3) and not (ri < first_data and first_data <= 4):
             table[-1] = [(a + ' ' + b).strip() for a, b in zip(table[-1], cells)]  # a wrapped line
         elif any(cells):
             table.append(cells)

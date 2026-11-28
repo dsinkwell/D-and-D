@@ -327,4 +327,8 @@ export const QUESTIONS: QualityQuestion[] = [
   { id: 'fr-tbl-talis-deck', q: 'how much does a talis deck cost', topic: 'equipment', needs: ['books'], direct: '\\b2 gp' },
   { id: 'fr-tbl-chakram-range', q: 'range increment of a chakram', topic: 'equipment', needs: ['books'], direct: '30 ft' },
   { id: 'fr-tbl-khopesh-damage', q: 'damage of a khopesh', topic: 'equipment', needs: ['books'], direct: '1d8' },
+  // scanned and body-font tables read in the second table pass (F&P Arachne table, LEoF Table 1–1, PoF Table 2–2)
+  { id: 'fr-tbl-arachne-spider-mount', q: 'At what level does an arachne get a spider mount?', topic: 'class', needs: ['books'], prompt: ['5th[^.]{0,80}Spider mount|Spider mount[^.]{0,80}5th'] },
+  { id: 'fr-tbl-channel-charge', q: 'What are the prerequisites for Channel Charge?', topic: 'feat', needs: ['books'], prompt: ['Use Magic Device 5 ranks'] },
+  { id: 'fr-tbl-giving-orders', q: 'What is the modifier for giving orders to someone who is frightened?', topic: 'realms', needs: ['books'], prompt: ['Frightened[^.]{0,20}[–-]10'] },
 ];
