@@ -4,8 +4,9 @@
 // What syncs, and how conflicts are settled ("last change wins"):
 //   r:<id>     one key per user record (character, list, homebrew, house rules), compared by
 //              the record's `updated` time; deletions travel as tombstones
-//   d:<name>   whole small documents — bookmarks, Jump to buttons, the house-rules switch, the
-//              name shown on shared files — compared by the time they last changed on a device
+//   d:<name>   whole small documents — bookmarks, recently viewed, Jump to buttons, the house-rules
+//              switch, the name shown on shared files, the campaign date — compared by the time they
+//              last changed on a device
 // The web app has no iCloud: there, sharing files is the way to move data between devices.
 import { registerPlugin } from '@capacitor/core';
 import { isNative } from './platform';
@@ -37,6 +38,8 @@ const DOCS: Doc[] = [
   { name: 'shortcuts', key: 'jump-shortcuts', event: 'shortcuts-changed' },
   { name: 'houserules', key: 'rc.houserules.on', event: 'rc-houserules' },
   { name: 'author', key: 'rc.author', event: 'rc-author' },
+  { name: 'history', key: 'rc.history', event: 'rc-history-changed' }, // recently viewed (Clear history clears it everywhere)
+  { name: 'harptos', key: 'rc.harptos', event: 'rc-harptos-changed' }, // the campaign date (Calendar of Harptos)
 ];
 const DOC_TIMES = 'rc.sync.doc-times';
 const docTimes = () => readLocal<Record<string, number>>(DOC_TIMES, {});
