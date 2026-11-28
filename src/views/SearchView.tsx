@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, Notice, SourceBadge, useDebounced, useOnline } from '../components';
-import { getHistory } from '../lib/bookmarks';
+import { clearHistory, getHistory } from '../lib/bookmarks';
 import { BookHit, highlight, listBooks, searchBooks } from '../lib/library';
 import { navigate, Route, wikiHref } from '../lib/router';
 import { CATEGORY_LABEL } from '../lib/srd';
 import { searchWikiBest, WikiSearchHit } from '../lib/wiki';
 import { OfflineDataCard } from '../OfflineData';
+import { useListNavigate, usePane } from '../lib/pane';
 import { booksReady } from '../lib/books';
 import { CatalogItem, searchRules } from '../lib/catalog';
 import { CatalogRow } from './CategoryView';
@@ -44,7 +45,9 @@ export default function SearchView({ route }: { route: Route }) {
     setQ((cur) => (cur.trim() === routeQ ? cur : routeQ));
   }, [routeQ]);
 
-  // keep URL in sync (replace, so typing doesn't flood history)
+  // keep URL in sync (replace, so typing doesn't flood history); in the left pane of the
+  // two-pane layout only that pane's list changes, so the open entry stays
+  const pane = usePane();
   useEffect(() => {
     const want = dq.trim();
     if (want !== (route.query.get('q') || '')) {
@@ -52,7 +55,8 @@ export default function SearchView({ route }: { route: Route }) {
       if (want) params.set('q', want);
       if (scope !== 'all') params.set('in', scope);
       const s = params.toString();
-      window.history.replaceState(null, '', `#/search${s ? `?${s}` : ''}`);
+      if (pane.embedded) pane.setList?.(`/search${s ? `?${s}` : ''}`);
+      else window.history.replaceState(null, '', `#/search${s ? `?${s}` : ''}`);
     }
   }, [dq]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -95,14 +99,16 @@ export default function SearchView({ route }: { route: Route }) {
     return () => ctrl.abort();
   }, [wq, scope, online]);
 
+  const listNavigate = useListNavigate();
   const setScope = (s: Scope) => {
     const params = new URLSearchParams();
     if (q.trim()) params.set('q', q.trim());
     if (s !== 'all') params.set('in', s);
-    navigate(`/search?${params}`, true);
+    listNavigate(`/search?${params}`);
   };
 
-  const history = useMemo(() => getHistory().slice(0, 12), []);
+  const [history, setHistory] = useState(() => getHistory().slice(0, 12));
+  const [confirmClear, setConfirmClear] = useState(false);
   const query = dq.trim();
   const limit = (n: number) => (scope === 'all' ? n : 500);
 
@@ -160,7 +166,31 @@ export default function SearchView({ route }: { route: Route }) {
           <JumpTo />
           {history.length > 0 && (
             <section>
-              <h2 className="section-title">Recently viewed</h2>
+              <div className="section-head">
+                <h2 className="section-title">Recently viewed</h2>
+                {confirmClear ? (
+                  <span className="clear-confirm">
+                    <span className="muted">Clear all?</span>
+                    <button
+                      className="link-btn danger"
+                      onClick={() => {
+                        clearHistory();
+                        setHistory([]);
+                        setConfirmClear(false);
+                      }}
+                    >
+                      Clear
+                    </button>
+                    <button className="link-btn" onClick={() => setConfirmClear(false)}>
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button className="link-btn" onClick={() => setConfirmClear(true)}>
+                    Clear history
+                  </button>
+                )}
+              </div>
               <ul className="list">
                 {history.map((h) => (
                   <li key={h.key}>

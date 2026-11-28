@@ -2123,6 +2123,15 @@ details.infobox-wrap .portable-infobox { border: 0; border-radius: 0; margin: 0;
   padding: 4px 2px;
   cursor: pointer;
 }
+.link-btn.danger {
+  font-weight: 600;
+}
+.clear-confirm {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+}
 .jump-list {
   list-style: none;
   padding: 0;
@@ -2772,4 +2781,53 @@ input.num {
 }
 .import-choice p {
   margin: 0 0 6px;
+}
+
+/* ------------------------------------------------------------------ two panes (iPad landscape, Mac)
+   The list you came from stays on the left (scrolling on its own); the entry opens on the right
+   and scrolls with the page. Matches SPLIT_QUERY in src/lib/pane.ts. */
+@media (min-width: 1100px) {
+  .main.split {
+    display: grid;
+    grid-template-columns: minmax(320px, 36%) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+    max-width: none;
+    margin-left: var(--sidebar-w);
+    margin-right: 0;
+    padding: 0 28px 48px 20px;
+  }
+  .pane-list {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 14px 48px 4px;
+    border-right: 1px solid var(--border);
+  }
+  .pane-detail {
+    min-width: 0;
+    max-width: 920px;
+  }
+  /* each pane's header bar sits flush at the top of its own pane */
+  .pane-list .page-header,
+  .pane-detail .page-header {
+    margin: 0 0 16px;
+  }
+  .pane-list > :first-child:not(.page-header),
+  .pane-list > .page > :first-child:not(.page-header) {
+    margin-top: 20px;
+  }
+  .pane-list a.is-current,
+  .pane-list a.is-current:hover {
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    border-radius: 8px;
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  /* a list in the narrower left pane: tighter cards */
+  .pane-list .search-heading {
+    font-size: clamp(21px, 10px + 1.4vw, 32px);
+  }
 }

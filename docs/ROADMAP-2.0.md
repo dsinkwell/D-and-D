@@ -16,6 +16,7 @@ The original brainstorm is kept below the decisions.
 **Picked for 2.0, in this order**
 1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
 2. Ask quality test set, then cross-reference following.
+   - **Tables, second pass (28 Nov, on `v2`, pack 20261128T0329):** FRCS Tables 3–3/3–5, F&P's prestige-class and pantheon tables (OCR, 0→21), LEoF Table 1–1, MoF prestige tables, PoF Table 2–2 fixed; tables 2,424 → 2,507 with no entry losses (`scripts/books/compare.py`). Left: OCR'd Special-column text can lose words; RoF's bladesinger table is still poor; the Ask search for the Arachne doesn't find its table.
    - **2b — done (28 Nov, pack 20261128T0013; merged into `main` 28 Nov).** Re-packed after a full
      per-book comparison with the pre-2b pack found regressions in 20261127T2310 (21 MM2 monsters, class tables
      merged into one cell, several prestige classes filed as rules; all fixed — see HANDOFF.md). Entries
@@ -41,7 +42,7 @@ The original brainstorm is kept below the decisions.
    entries, on one shared saved-data format. Sharing by **file** (option A below).
 4. iCloud sync across each person's own devices (native app only; the web app keeps data per device).
 5. Follow-up questions, then "Explain this" on any entry.
-6. iPad/Mac layout (stays sixth).
+6. iPad/Mac layout — **first version on `v2` (28 Nov):** two panes on screens ≥1100px (list left, entry right); type scales with the screen. To do: highlight in long book contents, try on the user's iPad and Mac.
 7. Forgotten Realms tools (Calendar of Harptos, travel distances).
 8. TestFlight invite for the group (as **internal testers**, no Beta App Review) + first-run guide.
 

@@ -56,7 +56,7 @@ export default function AboutView() {
         <p className="muted small">Status: {online ? 'online' : 'offline'} {usage && `· ${usage}`}</p>
       </section>
 
-      <OfflineDataCard name="wiki" />
+      <OfflineDataCard name="wiki" allowEarlyUpdate />
       <AskModelSettings />
       <WritingSettings />
 
