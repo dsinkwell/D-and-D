@@ -254,6 +254,8 @@ function groupSources(opts: SourceOption[]): [string | undefined, SourceOption[]
 export function CatalogRow({ item: e, badge }: { item: CatalogItem; badge?: string }) {
   const first = e.sources[0];
   const shorts = [...new Set(e.sources.map((s) => s.short))];
+  // the tags' full names, for hovering on a Mac or iPad pointer and for screen readers
+  const fullSources = [...new Set(e.sources.map((s) => `${s.name || s.short}${s.page ? `, p. ${s.page}` : ''}`))].join(' · ');
   const prefix =
     e.kind === 'feat' ? e.ftype?.[0] : e.kind === 'item' ? e.itemKind : e.kind === 'trap' && e.cr ? `CR ${e.cr}` : undefined;
   let second: ReactNode = null;
@@ -288,7 +290,7 @@ export function CatalogRow({ item: e, badge }: { item: CatalogItem; badge?: stri
           <div className="ref-line">
             {prefix && <span className="ref-prefix">{prefix}: </span>}
             <span className="ref-name">{e.title}</span>
-            <span className="ref-src">
+            <span className="ref-src" title={fullSources} aria-label={`Sources: ${fullSources}`}>
               [{shorts.slice(0, 3).join(' · ')}
               {shorts.length > 3 ? ` +${shorts.length - 3}` : ''}]
             </span>
