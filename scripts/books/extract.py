@@ -218,22 +218,27 @@ def order_blocks(blocks, W, H):
     if not blocks:
         return []
     narrow = [b for b in blocks if (b['bbox'][2] - b['bbox'][0]) < W * 0.55]
-    xs = sorted(b['bbox'][0] for b in narrow)
-    cols = []
-    for x in xs:
+    xs = sorted((b['bbox'][0], len(b['lines'])) for b in narrow)
+    cols, col_lines = [], []
+    for x, nl in xs:
         if cols and x - cols[-1][-1] < 30:
             cols[-1].append(x)
+            col_lines[-1] += nl
         else:
             cols.append([x])
+            col_lines.append(nl)
     # Keep only real columns: enough blocks/lines start there, and columns are well apart.
-    # (at least 3 blocks: a two-line illustration caption in the margin is not a column — PHB p. 93's
-    # "Lidda dodges…" made the right text column look wide and interleaved the two columns)
+    # At least 3 blocks, or 2 blocks holding real text: a two-line illustration caption in the margin
+    # is not a column (PHB p. 93's "Lidda dodges…" made the right text column look wide and
+    # interleaved the two columns), but a heading plus one long block is (CS p. 49's "Class Features"
+    # column was read before the left column's "Malconvoker" heading when 3 blocks were required).
     min_count = max(3, int(len(narrow) * 0.08))
+    min_count_long = max(2, int(len(narrow) * 0.08))
     # A column's edge is where its blocks start (a low percentile), not its leftmost member:
     # a page number or running header just left of a column must not drag the edge over.
     starts = []
-    for c in sorted(cols, key=lambda c: sorted(c)[len(c) // 5]):
-        if len(c) < min_count:
+    for c, nl in sorted(zip(cols, col_lines), key=lambda cl: sorted(cl[0])[len(cl[0]) // 5]):
+        if len(c) < min_count and not (len(c) >= min_count_long and nl >= 8):
             continue
         edge = sorted(c)[len(c) // 5]  # 20th percentile: ignores a stray page number, not indented lines
         if starts and edge - starts[-1] < W * 0.2:
@@ -394,7 +399,14 @@ def rows_follow(lines, li, body_size, look=4):
     often a column-heading line that never looks like a row (PHB class tables, CAdv's Ninja), so
     look a few lines down: rebuilding such a table from word positions merged whole columns into
     one cell, while the ordinary table path reads it correctly."""
-    return any(is_table_line(l, body_size) for l in lines[li + 1:li + 1 + look])
+    if any(is_table_line(l, body_size) for l in lines[li + 1:li + 1 + look]):
+        return True
+    # by position too: in reading order the lines after a caption can come from another column
+    # (ELH Table 1–25's rows sit under its caption, but the next lines read were the other column's)
+    cx0, _, cx1, cy1 = lines[li]['bbox']
+    below = sorted((l for l in lines if cy1 - 2 <= l['bbox'][1] <= cy1 + 50 and l['bbox'][0] < cx1 and l['bbox'][2] > cx0),
+                   key=lambda l: l['bbox'][1])
+    return any(is_table_line(l, body_size) for l in below[:look + 2])
 
 
 def split_cells(line):
@@ -497,6 +509,12 @@ def caption_table(lines, li, W, body_size, levels):
         st = line_style(l)
         if levels.get(st) and st[1] > body_size * 1.1:
             break
+        # a short heading standing alone on its row ends the table (ELH Table 1–25 read on into the
+        # next column and swallowed Divine Emissary's "Class Skills" / "Class Features" headings);
+        # a bold column-heading row has other words beside it
+        if levels.get(st) and len(rows_l) >= 2 and len(t.split()) <= 5 and not any(
+                j2 != j and abs((l2['bbox'][1] + l2['bbox'][3]) / 2 - (y0 + y1) / 2) < h * 0.55 for j2, l2 in cand):
+            break
         rows_l.append({'mid': (y0 + y1) / 2, 'bottom': y1, 'lines': [(j, l)]})
         heights.append(h)
         last_y = max(last_y, y1)
@@ -507,7 +525,15 @@ def caption_table(lines, li, W, body_size, levels):
             l = r['lines'][0][1]
             ws = line_words(l)
             gaps = [b[0] - a[2] for a, b in zip(ws, ws[1:])]
-            if (l['bbox'][2] - l['bbox'][0]) > (band[1] - band[0]) * 0.75 and (not gaps or max(gaps) < body_size * 0.6) and l['text'].strip().endswith(('.', ':')):
+            # (a wrapped sentence line rarely ends in "." — LEoF Table 10–5 ran on into the staff
+            # descriptions — so a long gapless line counts too: real rows have gaps between columns)
+            if (l['bbox'][2] - l['bbox'][0]) > (band[1] - band[0]) * 0.75 and (not gaps or max(gaps) < body_size * 0.6) and (
+                    l['text'].strip().endswith(('.', ':')) or len(ws) >= 9):
+                cut = k
+                break
+            # a description opening with a bold run-in name ("Lesser Staff of Silverymoon: Alustriel…")
+            s0 = l['spans'][0]
+            if re.match(r'^[A-Z][^:]{2,60}:\s', l['text'].strip()) and s0['text'].strip() and (BOLD.search(s0['font']) or s0['font'] in LEAD_FONTS):
                 cut = k
                 break
     rows_l = rows_l[:cut]
