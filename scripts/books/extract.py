@@ -932,6 +932,85 @@ def caption_table(lines, li, W, body_size, levels):
     return table, used
 
 
+ORDINAL = re.compile(r'^(\d{1,2})(st|nd|rd|th)$')
+BONUS = re.compile(r'^[+\-–]\d+(/[+\-–]?\d+)*/?$|^[+\-–]?\d+$|^—$')
+
+
+def _class_rows(rows):
+    """The data rows of a class table (a level ordinal first), with the count of bonus cells after the level."""
+    data = [r for r in rows if r and ORDINAL.match((r[0] or '').strip())]
+    if not data:
+        return data, 0
+    counts = collections.Counter()
+    for r in data:
+        k = 0
+        for c in r[1:]:
+            if BONUS.match(c.replace(' ', '')):
+                k += 1
+            else:
+                break
+        counts[k] += 1
+    return data, counts.most_common(1)[0][0]
+
+
+def _row_from_text(text, bonuses, width):
+    """"6th +6 /+1 +5 +2 +2 Trap sense +2, Bonus Feat" → ["6th", "+6/+1", "+5", "+2", "+2", "Trap sense +2, Bonus Feat"]."""
+    toks = text.split()
+    if not toks or not ORDINAL.match(toks[0]):
+        return None
+    cells, i = [toks[0]], 1
+    while len(cells) < 1 + bonuses and i < len(toks):
+        t = toks[i]
+        i += 1
+        # iterative attacks set with spaces: "+6 /+1", "+12/ +7/ +2"
+        while i < len(toks) and (t.endswith('/') or toks[i].startswith('/')):
+            t += toks[i]
+            i += 1
+        if not BONUS.match(t):
+            return None
+        cells.append(t)
+    rest = toks[i:]
+    # trailing numbers (spells per day…) fill the last columns
+    tail = []
+    while rest and len(cells) + 1 + len(tail) < width and re.match(r'^(\d+|—|–|-)$', rest[-1]):
+        tail.insert(0, rest.pop())
+    cells.append(' '.join(rest))
+    return cells + tail
+
+
+def join_split_class_tables(stream):
+    """Class tables cut into pieces by a row that wasn't read as a table row (PHB's Barbarian table:
+    "6th +6 /+1 +5 +2 +2 Trap sense +2, Bonus Feat" set partly in another font became a paragraph)
+    are joined: such a paragraph between two pieces becomes a row, and two pieces in a row whose
+    levels carry on are one table."""
+    out = []
+    for e in stream:
+        if e['t'] == 'table' and out:
+            # table · paragraph(s) that read as rows · table
+            k = len(out) - 1
+            between = []
+            while k >= 0 and out[k]['t'] == 'p' and len(between) < 2:
+                between.insert(0, out[k])
+                k -= 1
+            prev = out[k] if k >= 0 else None
+            if prev is not None and prev['t'] == 'table':
+                data_a, bon = _class_rows(prev['rows'])
+                data_b, _ = _class_rows(e['rows'])
+                if data_a and data_b and bon >= 2:
+                    width = max(len(r) for r in prev['rows'])
+                    rows = [_row_from_text(p['text'], bon, width) for p in between]
+                    levels = [int(ORDINAL.match(r[0]).group(1)) for r in data_a] + [int(ORDINAL.match(r[0]).group(1)) for r in rows if r] + \
+                        [int(ORDINAL.match(r[0]).group(1)) for r in data_b]
+                    first_b = e['rows'].index(data_b[0])
+                    if all(rows) and levels == sorted(levels) and len(set(levels)) == len(levels) and first_b == 0 and \
+                            levels[len(data_a) + len(rows)] == levels[len(data_a) + len(rows) - 1] + 1:
+                        prev['rows'] = prev['rows'] + rows + e['rows']
+                        del out[k + 1:]
+                        continue
+        out.append(e)
+    return out
+
+
 def build_stream(pages, body_size, levels, page_offset=0, toc=None):
     # Running headers/footers: identical short text in the top/bottom margin on many pages.
     margin_text = collections.Counter()
@@ -1095,7 +1174,7 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
             merged[-1]['html'] += ' ' + e['html']
             continue
         merged.append(e)
-    stream[:] = merged
+    stream[:] = join_split_class_tables(merged)
     for e in stream:
         e.pop('_y', None)
         if e.pop('bm', None):

@@ -98,13 +98,15 @@ ROWS_PER_PART = 4096
 
 def write_vector_tables(db, refs, vecs):
     """Store passages + vectors in a SQLite database the app downloads:
-    ask_passages(id, ref, start, end) and ask_vectors(n, data) with ROWS_PER_PART vectors per row."""
+    ask_passages(id, ref, start, end, name) and ask_vectors(n, data) with ROWS_PER_PART vectors per row.
+    `name` is set for a passage that is one run-in definition inside a section ("Longsword" in the
+    PHB's weapon descriptions): the app shows it as the passage's title."""
     db.executescript('''
       DROP TABLE IF EXISTS ask_passages; DROP TABLE IF EXISTS ask_vectors;
-      CREATE TABLE ask_passages (id INTEGER PRIMARY KEY, ref INTEGER, start INTEGER, "end" INTEGER);
+      CREATE TABLE ask_passages (id INTEGER PRIMARY KEY, ref INTEGER, start INTEGER, "end" INTEGER, name TEXT);
       CREATE TABLE ask_vectors (n INTEGER PRIMARY KEY, data BLOB);
     ''')
-    db.executemany('INSERT INTO ask_passages VALUES (?,?,?,?)', [(i, *r) for i, r in enumerate(refs)])
+    db.executemany('INSERT INTO ask_passages VALUES (?,?,?,?,?)', [(i, *r[:3], r[3] if len(r) > 3 else None) for i, r in enumerate(refs)])
     for n in range(0, len(vecs), ROWS_PER_PART):
         db.execute('INSERT INTO ask_vectors VALUES (?,?)', (n // ROWS_PER_PART, vecs[n:n + ROWS_PER_PART].tobytes()))
     db.execute('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)')
