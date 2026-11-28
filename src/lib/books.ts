@@ -24,6 +24,7 @@ export interface BookInfo {
   shelf: string;
   edition: string;
   pages: number;
+  ord?: number; // the books' order on the shelves
 }
 
 export interface BookEntry {
@@ -47,7 +48,7 @@ export const booksReady = () => isInstalled('books');
 
 let booksP: Promise<BookInfo[]> | null = null;
 export function listBuiltInBooks(): Promise<BookInfo[]> {
-  booksP ??= query<BookInfo>('books', 'SELECT id, title, short, shelf, edition, pages FROM books ORDER BY ord').catch((e) => {
+  booksP ??= query<BookInfo>('books', 'SELECT id, title, short, shelf, edition, pages, ord FROM books ORDER BY ord').catch((e) => {
     booksP = null;
     throw e;
   });

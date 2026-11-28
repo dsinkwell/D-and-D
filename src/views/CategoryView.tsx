@@ -4,7 +4,7 @@ import { keyForHref } from '../lib/bookmarks';
 import { navigate, Route } from '../lib/router';
 import { Category, CATEGORY_LABEL, CLASS_NAMES, crValue, priceValue, SCHOOLS, SPELL_CLASSES } from '../lib/srd';
 import { BROWSE } from './RulesHome';
-import { catalog, CatalogItem, sourceOptions } from '../lib/catalog';
+import { catalog, CatalogItem, sourceOptions, type SourceOption } from '../lib/catalog';
 
 const PAGE = 300;
 const OTHER_CASTERS = ['Adept', 'Assassin', 'Blackguard', 'Duskblade', 'Harper', 'Hathran', 'Healer', 'Shugenja', 'Warmage', 'Wu Jen'];
@@ -191,11 +191,23 @@ export default function CategoryView({ cat, route }: { cat: string; route: Route
         {options.sources.length > 1 && (
           <select value={src} onChange={(e) => setF('src', e.target.value)} aria-label="Book">
             <option value="">All books</option>
-            {options.sources.map((s) => (
-              <option key={s} value={s}>
-                {s === 'SRD' ? 'SRD (3.5 reference)' : s}
-              </option>
-            ))}
+            {groupSources(options.sources).map(([group, opts]) =>
+              group ? (
+                <optgroup key={group} label={group}>
+                  {opts.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                opts.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))
+              ),
+            )}
           </select>
         )}
       </div>
@@ -221,6 +233,17 @@ export default function CategoryView({ cat, route }: { cat: string; route: Route
       )}
     </div>
   );
+}
+
+/** Consecutive options of the same shelf, as [shelf, options] runs (SRD and homebrew have no shelf). */
+function groupSources(opts: SourceOption[]): [string | undefined, SourceOption[]][] {
+  const out: [string | undefined, SourceOption[]][] = [];
+  for (const o of opts) {
+    const last = out[out.length - 1];
+    if (last && last[0] === o.group) last[1].push(o);
+    else out.push([o.group, [o]]);
+  }
+  return out;
 }
 
 /** A row for one rules item, reference-app style: "General: **Power Attack** [PHB · SRD]" with a
