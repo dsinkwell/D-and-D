@@ -11,6 +11,10 @@ export function versionDate(v?: string | null): Date | null {
 }
 const fmtDate = (v?: string | null) => versionDate(v)?.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) ?? v ?? '';
 
+// The wiki is rebuilt every week, but articles change slowly: only prompt for its update once the
+// published copy is a month newer than the one on the device. (The books prompt at once.)
+const PROMPT_AFTER_DAYS: Partial<Record<DbName, number>> = { wiki: 30 };
+
 const LABEL: Record<DbName, { title: string; what: (m: RemoteManifest | null) => string }> = {
   wiki: {
     title: 'Offline Forgotten Realms Wiki',
@@ -22,7 +26,22 @@ const LABEL: Record<DbName, { title: string; what: (m: RemoteManifest | null) =>
   },
 };
 
-export function OfflineDataCard({ name, compact = false, passphrase, onInstalled, autoStart = false }: { name: DbName; compact?: boolean; passphrase?: string; onInstalled?: () => void; autoStart?: boolean }) {
+export function OfflineDataCard({
+  name,
+  compact = false,
+  passphrase,
+  onInstalled,
+  autoStart = false,
+  allowEarlyUpdate = false,
+}: {
+  name: DbName;
+  compact?: boolean;
+  passphrase?: string;
+  onInstalled?: () => void;
+  autoStart?: boolean;
+  /** Offer an update that isn't due yet, without prompting for it (About → Offline data). */
+  allowEarlyUpdate?: boolean;
+}) {
   const status = useDbStatus();
   const [remote, setRemote] = useState<RemoteManifest | null | undefined>(undefined);
   const [progress, setProgress] = useState<InstallProgress | null>(null);
@@ -35,7 +54,10 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
   }, [name]);
 
   const installed = status?.installed[name];
-  const updateAvailable = !!(installed && remote && remote.version > installed);
+  const newer = !!(installed && remote && remote.version > installed);
+  const ageDays = newer ? ((versionDate(remote!.version)?.getTime() ?? 0) - (versionDate(installed)?.getTime() ?? 0)) / 86_400_000 : 0;
+  const updateDue = newer && ageDays >= (PROMPT_AFTER_DAYS[name] ?? 0);
+  const updateAvailable = updateDue || (newer && allowEarlyUpdate);
   const label = LABEL[name];
 
   const install = async () => {
@@ -94,7 +116,8 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
             {installed ? (
               <>
                 On this device · updated {fmtDate(installed)}
-                {updateAvailable && <> · <b>newer version from {fmtDate(remote!.version)} available</b></>}
+                {updateDue && <> · <b>newer version from {fmtDate(remote!.version)} available</b></>}
+                {updateAvailable && !updateDue && <> · a newer version from {fmtDate(remote!.version)} is available</>}
               </>
             ) : remote ? (
               <>
@@ -133,8 +156,8 @@ export function OfflineDataCard({ name, compact = false, passphrase, onInstalled
             />
           )}
           {updateAvailable && (
-            <button className="btn primary" onClick={install} disabled={needsPass && !pass}>
-              Update ({formatBytes(remote!.downloadBytes)})
+            <button className={`btn ${updateDue ? 'primary' : 'subtle'}`} onClick={install} disabled={needsPass && !pass}>
+              {updateDue ? 'Update' : 'Update now'} ({formatBytes(remote!.downloadBytes)})
             </button>
           )}
           {installed && !compact && (

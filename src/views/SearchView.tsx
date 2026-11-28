@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, Notice, SourceBadge, useDebounced, useOnline } from '../components';
-import { getHistory } from '../lib/bookmarks';
+import { clearHistory, getHistory } from '../lib/bookmarks';
 import { BookHit, highlight, listBooks, searchBooks } from '../lib/library';
 import { navigate, Route, wikiHref } from '../lib/router';
 import { CATEGORY_LABEL } from '../lib/srd';
@@ -102,7 +102,8 @@ export default function SearchView({ route }: { route: Route }) {
     navigate(`/search?${params}`, true);
   };
 
-  const history = useMemo(() => getHistory().slice(0, 12), []);
+  const [history, setHistory] = useState(() => getHistory().slice(0, 12));
+  const [confirmClear, setConfirmClear] = useState(false);
   const query = dq.trim();
   const limit = (n: number) => (scope === 'all' ? n : 500);
 
@@ -160,7 +161,31 @@ export default function SearchView({ route }: { route: Route }) {
           <JumpTo />
           {history.length > 0 && (
             <section>
-              <h2 className="section-title">Recently viewed</h2>
+              <div className="section-head">
+                <h2 className="section-title">Recently viewed</h2>
+                {confirmClear ? (
+                  <span className="clear-confirm">
+                    <span className="muted">Clear all?</span>
+                    <button
+                      className="link-btn danger"
+                      onClick={() => {
+                        clearHistory();
+                        setHistory([]);
+                        setConfirmClear(false);
+                      }}
+                    >
+                      Clear
+                    </button>
+                    <button className="link-btn" onClick={() => setConfirmClear(false)}>
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button className="link-btn" onClick={() => setConfirmClear(true)}>
+                    Clear history
+                  </button>
+                )}
+              </div>
               <ul className="list">
                 {history.map((h) => (
                   <li key={h.key}>
