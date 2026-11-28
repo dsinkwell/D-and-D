@@ -2844,3 +2844,11 @@ input.num {
 .ask-followup {
   margin: 14px 0 18px;
 }
+
+/* "Explain this" on entries (native app) */
+.explain-btn {
+  margin: 4px 0 12px;
+}
+.explain-card {
+  margin: 4px 0 16px;
+}

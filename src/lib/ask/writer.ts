@@ -151,6 +151,12 @@ export async function writeAnswer(
   const excerpt = engine.kind === 'local' ? 900 : 1600;
   const built = found ? await promptFrom(q, found.direct, found.passages, n, excerpt, 0, convo) : await buildPrompt(q, n, excerpt, convo);
   onSources?.(built);
+  const r = await runWriter(built.instructions, built.prompt, engine, onText, 300);
+  return { ...r, built, engine };
+}
+
+/** One call to the chosen on-device model; onText gets the text so far. */
+async function runWriter(instructions: string, prompt: string, engine: Engine, onText: (text: string) => void, maxTokens: number) {
   const id = Math.random().toString(36).slice(2);
   const t0 = performance.now();
   let firstMs = 0;
@@ -159,13 +165,13 @@ export async function writeAnswer(
     if (!firstMs) firstMs = Math.round(performance.now() - t0);
     onText(d.text);
   };
-  const args = { id, instructions: built.instructions, prompt: built.prompt, maxTokens: 300 };
+  const args = { id, instructions, prompt, maxTokens };
   if (engine.kind === 'local') {
     const w = getLocal(); // not awaited: see note above
     const sub = await w.addListener('localWriter', onEvent);
     try {
       const r = await w.write({ ...args, model: engine.model });
-      return { text: r.text, built, firstMs, totalMs: Math.round(performance.now() - t0), engine };
+      return { text: r.text as string, firstMs, totalMs: Math.round(performance.now() - t0) };
     } finally {
       await sub.remove();
     }
@@ -174,10 +180,41 @@ export async function writeAnswer(
   const sub = await w.addListener('writer', onEvent);
   try {
     const r = await w.write(args);
-    return { text: r.text, built, firstMs, totalMs: Math.round(performance.now() - t0), engine };
+    return { text: r.text as string, firstMs, totalMs: Math.round(performance.now() - t0) };
   } finally {
     await sub.remove();
   }
+}
+
+// "Explain this" on an entry: a plain-English explanation of the entry's own text.
+export const EXPLAIN_INSTRUCTIONS = [
+  'You explain Dungeons & Dragons 3.5 and Forgotten Realms entries in plain English, using only the text you are given.',
+  'First say in one sentence what it is and what it does.',
+  'Then explain how it works in play: when you would use it, what it requires or costs, and the numbers that matter (range, duration, saving throw, bonuses, prerequisites, hit dice).',
+  'Explain game terms briefly in everyday words. Write 3 to 6 short sentences.',
+  'Do not add rules, facts or advice that are not in the text. If the text is lore rather than rules, summarise who or what it is and why it matters.',
+].join(' ');
+
+/** The prompt for "Explain this": the entry's text, trimmed to what the model has room for. */
+export function explainPrompt(title: string, label: string, text: string, engine: Engine) {
+  const room = engine.kind === 'local' ? 1800 : 4000;
+  // footnote marks and wiki boilerplate only take the model's room
+  const body = text
+    .replace(/\u00a0/g, ' ')
+    .replace(/\[\s*\d+\s*\]/g, '')
+    .replace(/\bThis\s+is\s+an?\s+(?:Good|Featured)\s+Article\s*!?/gi, '')
+    .replace(/[—-]\s*quick facts/gi, '')
+    .replace(/\s+([,.;:])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const cut = body.length > room ? `${body.slice(0, room).replace(/\s\S*$/, '')} …` : body;
+  return `Source [${label}] ${title}:\n${cut}\n\nExplain “${title}” in plain English for a player at the table.`;
+}
+
+export async function explainEntry(title: string, label: string, text: string, engine: Engine, onText: (text: string) => void) {
+  const prompt = explainPrompt(title, label, text, engine);
+  const r = await runWriter(EXPLAIN_INSTRUCTIONS, prompt, engine, onText, 350);
+  return { ...r, prompt };
 }
 
 // "Write answers automatically" (native app): on unless turned off on the About page.
