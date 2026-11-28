@@ -2976,3 +2976,328 @@ input.num {
   box-sizing: border-box;
   min-width: 0;
 }
+
+/* ==================================================================================================
+   Design refinement (28 Nov): one visual system over the components above — styling only.
+   - Type: the sans for the interface; the serif for reading text and for the large titles (entry,
+     home), never for card or list headings.
+   - Header and section bars: light and translucent instead of solid charcoal.
+   - The accent is used with restraint: tints for selection, solid only for the main action.
+   - One radius, border and shadow scale; visible keyboard focus.
+   ================================================================================================== */
+:root {
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --surface-2: #f4f1ec;
+  --border: #e6e0d7;
+  --border-strong: #d6cdc1;
+  --text: #1d1a17;
+  --muted: #6e665d;
+  --accent-soft: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  --accent-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --bar: color-mix(in srgb, var(--bg) 84%, transparent);
+  --bar-text: var(--text);
+  --bar-muted: var(--muted);
+  --radius-s: 8px;
+  --radius: 12px;
+  --radius-l: 16px;
+  --shadow: 0 1px 2px rgb(40 28 16 / 0.05), 0 0 0 0.5px rgb(40 28 16 / 0.02);
+  --shadow-2: 0 6px 20px -6px rgb(40 28 16 / 0.16), 0 1px 3px rgb(40 28 16 / 0.06);
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121110;
+    --surface: #1b1917;
+    --surface-2: #24211e;
+    --border: #312d29;
+    --border-strong: #423d37;
+    --text: #ece6dc;
+    --muted: #a59c90;
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    --bar: color-mix(in srgb, var(--bg) 82%, transparent);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-2: 0 8px 24px -8px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.4);
+  }
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* keyboard focus, everywhere */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-color: var(--accent);
+}
+
+/* ---- header bar: translucent, with a hairline */
+.page-header {
+  background: var(--bar);
+  color: var(--bar-text);
+  backdrop-filter: saturate(1.6) blur(18px);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+.page-title h1 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.subtitle {
+  color: var(--muted);
+}
+.page-header .btn.subtle {
+  color: var(--link);
+}
+.page-header .icon-btn {
+  color: var(--accent);
+}
+
+/* ---- titles: the serif, for the page's own subject */
+.entry-title,
+.search-heading {
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.entry-source {
+  letter-spacing: 0.005em;
+}
+
+/* ---- headings inside the interface: the sans */
+.card h2,
+.offline-card h2,
+.book-title,
+.chapter-group h3,
+.toc-list .chapter-row {
+  font-family: var(--sans);
+  letter-spacing: -0.01em;
+}
+.card h2 {
+  font-weight: 650;
+  margin: 14px 0 8px;
+}
+.book-title {
+  font-weight: 650;
+}
+.toc-list .chapter-row {
+  font-weight: 650;
+  font-size: var(--fs-ui);
+}
+
+/* ---- section labels: typographic, not bars */
+.section-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.section-bar {
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 2px 8px;
+  margin: 22px 0 0;
+  border-radius: 0;
+}
+.section-bar a {
+  color: inherit;
+}
+.section-bar .count {
+  color: var(--muted);
+  font-weight: 500;
+}
+.section-bar + .list {
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---- surfaces: one radius, border and shadow scale */
+.card,
+.list,
+.tile,
+.book-tile,
+.quick,
+.ask-direct,
+.ask-written,
+.notice {
+  border-radius: var(--radius);
+}
+.card,
+.list,
+.tile,
+.book-tile,
+.quick {
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+.card {
+  padding: 4px 20px 16px;
+}
+@media (hover: hover) {
+  .tile,
+  .book-tile,
+  .quick {
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  }
+  .tile:hover,
+  .book-tile:hover,
+  .quick:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-2);
+    transform: translateY(-1px);
+  }
+}
+.tile-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+/* ---- list rows */
+.row {
+  transition: background-color 0.12s;
+}
+.row:active {
+  background: var(--accent-soft);
+}
+.row-title {
+  font-weight: 620;
+}
+
+/* ---- selection: tints, not solid blocks */
+.chip {
+  border-color: var(--border);
+  font-weight: 500;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.chip.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-line);
+  font-weight: 650;
+}
+@media (min-width: 900px) {
+  .nav-item {
+    font-weight: 500;
+    transition: background-color 0.12s, color 0.12s;
+  }
+  .nav-item.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 650;
+  }
+  .sidebar {
+    background: color-mix(in srgb, var(--surface-2) 70%, var(--bg));
+  }
+  .brand {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+}
+.tab.active {
+  font-weight: 650;
+}
+
+/* ---- pills */
+.pill {
+  border-color: var(--border);
+  transition: background-color 0.12s, border-color 0.12s;
+}
+@media (hover: hover) {
+  .pill:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
+  }
+}
+
+/* ---- buttons and fields */
+.btn {
+  border-radius: 10px;
+  font-weight: 550;
+  transition: background-color 0.12s, border-color 0.12s, transform 0.08s;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn.primary {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+@media (hover: hover) {
+  .btn.primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 88%, #000);
+  }
+  .btn.subtle:hover:not(:disabled) {
+    background: var(--accent-soft);
+  }
+}
+.searchbar {
+  border-radius: var(--radius);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.searchbar:focus-within {
+  box-shadow: var(--focus);
+}
+.filters select,
+.filter-text,
+.travel-form input,
+.travel-form select {
+  border-color: var(--border);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+/* ---- notices: a coloured edge, not a coloured box */
+.notice {
+  border-left-width: 3px;
+}
+.notice-error {
+  background: color-mix(in srgb, #c0544b 6%, var(--surface));
+}
+.notice-warn {
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface));
+}
+
+/* ---- Ask */
+.ask-direct {
+  border-left: 3px solid var(--accent);
+}
+.ask-passage + .ask-passage {
+  border-top-color: var(--border);
+}
+
+/* ---- the dice button */
+.dice-fab,
+.dice-toggle {
+  box-shadow: var(--shadow-2);
+}
+/* the search box shows focus as a whole; its field inside doesn't add a second ring */
+.searchbar input:focus-visible {
+  box-shadow: none;
+  border-color: transparent;
+}
+.year-nav .btn {
+  white-space: nowrap;
+}
+.advance input {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-height: 40px;
+  font-size: 16px;
+  color: var(--text);
+}
