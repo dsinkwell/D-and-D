@@ -14,6 +14,7 @@ import { BookEntryView, BookTocView } from './views/BookViews';
 import SavedView from './views/SavedView';
 import AboutView from './views/AboutView';
 import AskView from './views/AskView';
+import { CalendarView, ToolsHome, TravelView } from './views/ToolsViews';
 import DiceTray from './DiceTray';
 import { CharacterView, CharactersView } from './views/CharacterViews';
 import { ListView } from './views/ListViews';
@@ -22,7 +23,7 @@ import { HomebrewEdit, HomebrewView } from './views/HomebrewViews';
 const TABS = [
   { id: 'search', label: 'Search', href: '#/', match: (p: string) => p === '/' || p.startsWith('/search') || p.startsWith('/ask') },
   { id: 'rules', label: 'Rules', href: '#/rules', match: (p: string) => p.startsWith('/rules') || p.startsWith('/srd') },
-  { id: 'realms', label: 'Realms', href: '#/wiki', match: (p: string) => p.startsWith('/wiki') },
+  { id: 'realms', label: 'Realms', href: '#/wiki', match: (p: string) => p.startsWith('/wiki') || p.startsWith('/tools') },
   { id: 'library', label: 'Books', href: '#/library', match: (p: string) => p.startsWith('/library') || p.startsWith('/book') },
   { id: 'saved', label: 'Saved', href: '#/saved', match: (p: string) => p.startsWith('/saved') || p.startsWith('/character') || p.startsWith('/list') || p.startsWith('/homebrew') },
 ];
@@ -176,6 +177,8 @@ function viewFor(route: Route) {
       return rest[0] === 'new' || rest[1] === 'edit' ? <HomebrewEdit id={rest[0]} route={route} /> : <HomebrewView id={rest[0]} />;
     case 'about':
       return <AboutView />;
+    case 'tools':
+      return rest[0] === 'calendar' ? <CalendarView /> : rest[0] === 'travel' ? <TravelView /> : <ToolsHome />;
     default:
       return <SearchView route={route} />;
   }

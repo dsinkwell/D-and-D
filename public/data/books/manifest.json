@@ -1,29 +1,33 @@
 {
   "name": "books",
-  "version": "20261128T0329",
-  "built": "2026-11-28T03:29:31.926Z",
-  "dbBytes": 49094656,
-  "sha256": "e36e55a1b1777f24af35633c215568e734dc112cf1f2dbe439e1fda722891103",
+  "version": "20261128T0433",
+  "built": "2026-11-28T04:34:00.082Z",
+  "dbBytes": 50540544,
+  "sha256": "c63ca6edae705dcf36f40f545b8373fb5cfc927897617fe7312469e7ea673aac",
   "parts": [
     {
       "file": "part-000.bin",
-      "bytes": 12212452
+      "bytes": 12211327
     },
     {
       "file": "part-001.bin",
-      "bytes": 9171719
+      "bytes": 9170191
     },
     {
       "file": "part-002.bin",
-      "bytes": 9238577
+      "bytes": 10010310
+    },
+    {
+      "file": "part-003.bin",
+      "bytes": 125314
     }
   ],
   "bookCount": 27,
   "encryption": {
     "kdf": "PBKDF2-SHA256",
     "iterations": 600000,
-    "salt": "GXY5aGycg2deHdOZB44N5w==",
-    "check": "04HKvnAjA9ADKqVP3FBe2CJxXOKU6MYPxZauuFp0hTm36IDrSlUW4zqvQwuOsiX7khsuCXw="
+    "salt": "jDHQ6kLTZCewtys0XUgZnA==",
+    "check": "fSWu7vX1+QjskFwv2Yn11JgbkMhgWOEjOPtC/E95eXGW7dHl0jfg1AiXx+0MvM9+v5DMMZ0="
   },
-  "downloadBytes": 30622748
+  "downloadBytes": 31517142
 }

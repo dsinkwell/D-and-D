@@ -110,7 +110,7 @@ export async function removeAsk() {
 
 interface Refs {
   srd?: [string, number, number][];
-  books?: { ref: number; start: number; end: number }[];
+  books?: { ref: number; start: number; end: number; name?: string | null }[];
   wiki?: { ref: number }[];
 }
 const refs: Refs = {};
@@ -143,7 +143,10 @@ async function loadSource(src: AskSource) {
     if (!(await isInstalled(db))) return;
     const has = await query<{ n: number }>(db, "SELECT count(*) n FROM sqlite_master WHERE name = 'ask_vectors'");
     if (!has[0]?.n) return; // an older download without the meaning index
-    const [vec, rows] = await Promise.all([loadBlobRows(db), query<any>(db, 'SELECT ref, start, "end" FROM ask_passages ORDER BY id')]);
+    // `name`: a passage that is one run-in definition ("Longsword"); packs built before it lack the column
+    const named = await query<{ n: number }>(db, "SELECT count(*) n FROM pragma_table_info('ask_passages') WHERE name = 'name'").catch(() => [{ n: 0 }]);
+    const cols = named[0]?.n ? 'ref, start, "end", name' : 'ref, start, "end"';
+    const [vec, rows] = await Promise.all([loadBlobRows(db), query<any>(db, `SELECT ${cols} FROM ask_passages ORDER BY id`)]);
     if (src === 'books') refs.books = rows;
     else refs.wiki = rows;
     await call({ op: 'load', source: src, data: vec }, [vec]);
@@ -197,14 +200,15 @@ async function bookPassage(i: number, score: number): Promise<Passage | null> {
   const e = rows[0];
   if (!e) return null;
   bookShort ??= new Map((await listBuiltInBooks()).map((b) => [b.id, b.short]));
-  // the matched chunk plus the rest of its section (the deciding sentence is often further on)
-  const blocks = await blocksFor(e.book, r.start, Math.max(r.end, Math.min(e.end, r.start + 12)));
+  // the matched chunk plus the rest of its section (the deciding sentence is often further on);
+  // a named definition is just itself ("Longsword: …", not the weapons after it)
+  const blocks = await blocksFor(e.book, r.start, r.name ? r.end : Math.max(r.end, Math.min(e.end, r.start + 12)));
   const twin = await srdTwinIfMisaligned(e.title, e.kind, blocks.join('\n'));
   if (twin) return { ...twin, key: `bk:${e.id}:${r.start}`, score };
   return {
     key: `bk:${e.id}:${r.start}`,
     source: 'books',
-    title: qualifiedTitle(e.title, e.parent),
+    title: r.name || qualifiedTitle(e.title, e.parent),
     kind: e.kind,
     label: `${bookShort.get(e.book) || e.book} p. ${e.page}`,
     href: bookEntryHref(e),

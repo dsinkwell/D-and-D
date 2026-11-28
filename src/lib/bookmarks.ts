@@ -57,15 +57,21 @@ export function setBookmarks(list: Mark[]) {
   emit();
 }
 
+export const HISTORY_EVENT = 'rc-history-changed'; // also how iCloud sync notices a change (cloud.ts)
+
 export function recordVisit(m: Omit<Mark, 'at'>) {
   const list = getHistory().filter((x) => x.key !== m.key);
+  // the same page again on top: nothing to record or sync
+  if (getHistory()[0]?.key === m.key) return;
   list.unshift({ ...m, at: Date.now() });
   writeLocal(HIST, list.slice(0, 40));
+  window.dispatchEvent(new Event(HISTORY_EVENT));
 }
 
 export function clearHistory() {
   writeLocal(HIST, []);
   emit();
+  window.dispatchEvent(new Event(HISTORY_EVENT));
 }
 
 export function useBookmarks() {

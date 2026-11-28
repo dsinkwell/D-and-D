@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, Notice, SourceBadge, useDebounced, useOnline } from '../components';
-import { clearHistory, getHistory } from '../lib/bookmarks';
+import { clearHistory, getHistory, HISTORY_EVENT } from '../lib/bookmarks';
 import { BookHit, highlight, listBooks, searchBooks } from '../lib/library';
 import { navigate, Route, wikiHref } from '../lib/router';
 import { CATEGORY_LABEL } from '../lib/srd';
@@ -109,6 +109,16 @@ export default function SearchView({ route }: { route: Route }) {
 
   const [history, setHistory] = useState(() => getHistory().slice(0, 12));
   const [confirmClear, setConfirmClear] = useState(false);
+  // history from the user's other devices (iCloud sync) or another tab
+  useEffect(() => {
+    const on = () => setHistory(getHistory().slice(0, 12));
+    window.addEventListener(HISTORY_EVENT, on);
+    window.addEventListener('storage', on);
+    return () => {
+      window.removeEventListener(HISTORY_EVENT, on);
+      window.removeEventListener('storage', on);
+    };
+  }, []);
   const query = dq.trim();
   const limit = (n: number) => (scope === 'all' ? n : 500);
 

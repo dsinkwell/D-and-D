@@ -471,6 +471,10 @@ def mark_prestige_classes(stream, entries):
 
 # ---------------------------------------------------------------------------- database
 
+# "<p><b>Longsword:</b> This classic…", "<p><b>Axe, Throwing:</b> …": a named definition in running text
+RUNIN_DEF = re.compile(r'^<p><b>([A-Z][^<:]{1,48}?):?</b>:?\s')
+
+
 def add_ask_index(db, results):
     """Ask-box meaning index: each spell/feat/item/monster… is one passage (title + opening
     text); long rules sections are split into ~700-character passages. Stored in the books
@@ -486,6 +490,17 @@ def add_ask_index(db, results):
         return
     ids = {(r[0], r[1]): r[2] for r in db.execute('SELECT book, start, id FROM entries')}
     refs, texts = [], []
+    # a run-in name that recurs across the books is a label ("Deities:", "Granted Power:",
+    # "Special:"), not a definition: only names seen a few times get passages of their own
+    label_count = collections.Counter()
+    for (b, blocks, entries, pages) in results:
+        for e in entries:
+            if e['kind'] == 'rule':
+                for i in range(e['start'], e['end']):
+                    m = RUNIN_DEF.match(blocks[i])
+                    if m:
+                        label_count[htmllib.unescape(m.group(1)).strip().lower()] += 1
+    labels = {n for n, c in label_count.items() if c > 4}
     for (b, blocks, entries, pages) in results:
         plain = None
         order = sorted(entries, key=lambda e: e['start'])
@@ -505,6 +520,28 @@ def add_ask_index(db, results):
                 if plain[i] is None:
                     plain[i] = html_text(blocks[i])
                 seg.append(plain[i])
+            # run-in definitions inside a rules section ("Longsword: This classic, straight blade…") are
+            # passages of their own, named, and not counted against the section's cap: a long list of
+            # weapons or items otherwise reaches only its first few entries, inside mixed passages
+            runin = {}
+            if e['kind'] == 'rule':
+                for i in range(lo, hi):
+                    m = RUNIN_DEF.match(blocks[i])
+                    if m and htmllib.unescape(m.group(1)).strip().lower() not in labels:
+                        runin[i] = htmllib.unescape(m.group(1)).strip()
+            if runin:
+                starts = sorted(runin)
+                for n, i in enumerate(starts):
+                    end = starts[n + 1] if n + 1 < len(starts) else hi
+                    j = i + 1  # the definition and any plain paragraphs that continue it (not a heading or table)
+                    while j < end and j - i < 4 and blocks[j].startswith('<p') and sum(len(plain[k]) for k in range(i, j)) < 700:
+                        j += 1
+                    name = runin[i]
+                    refs.append((eid, i, j, name))
+                    texts.append(f"{name} ({e['title']}). {' '.join(plain[k] for k in range(i, j))}"[:1200])
+                # the section's other text, without the definitions
+                rest = [t if (lo + k) not in runin else '' for k, t in enumerate(seg)]
+                seg = rest
             chunks = chunk_blocks(seg, target=900 if e['kind'] != 'rule' else 700, max_chunks=1 if e['kind'] != 'rule' else 12)
             for a, z, text in chunks:
                 refs.append((eid, lo + a, lo + z))

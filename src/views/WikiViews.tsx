@@ -6,6 +6,7 @@ import { navigate, wikiHref } from '../lib/router';
 import { useDbStatus } from '../lib/db';
 import { CATEGORY_LABEL, Entry, entryHref, loadEntries } from '../lib/srd';
 import { OfflineDataCard, versionDate } from '../OfflineData';
+import { ExplainCard } from './ExplainCard';
 import {
   Article,
   CategoryMember,
@@ -54,6 +55,18 @@ export function WikiHome() {
         <Icon name="search" />
         <input type="search" enterKeyHint="search" placeholder="Search the Forgotten Realms Wiki…" value={q} onChange={(e) => setQ(e.target.value)} />
       </form>
+
+      <section>
+        <h2 className="section-title">Realms tools</h2>
+        <div className="pill-list">
+          <a className="pill" href="#/tools/calendar">
+            Calendar of Harptos
+          </a>
+          <a className="pill" href="#/tools/travel">
+            Travel time
+          </a>
+        </div>
+      </section>
 
       {recent.length > 0 && (
         <section>
@@ -271,6 +284,7 @@ function WikiArticle({ title }: { title: string }) {
       />
       {err && <Notice kind="warn">{err.message}</Notice>}
       <AddToList item={{ key: `wiki:${article.title}`, title: textOfTitle(article.displayTitle), href: wikiHref(article.title), subtitle: 'Realms Wiki' }} />
+      <ExplainCard key={article.title} title={textOfTitle(article.displayTitle)} label="Forgotten Realms Wiki" html={article.html} />
       {rules.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">3.5 rules:</span>

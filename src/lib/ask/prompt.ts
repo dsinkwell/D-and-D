@@ -7,6 +7,13 @@ import { highlight, keyTerms, termsIn, textOf } from './highlight';
 import { query } from '../db';
 import { catalog, nameKey } from '../catalog';
 import { homebrewHref, homebrewHtml, homebrewIn } from '../homebrew';
+import { historyText, type Turn } from './followup';
+
+/** A follow-up: the question as asked, and the earlier turns (the search used the rebuilt question). */
+export interface Convo {
+  asked: string;
+  turns: Turn[];
+}
 
 export const INSTRUCTIONS = [
   'You answer questions about the Dungeons & Dragons 3.5 rules and the Forgotten Realms, using only the sources you are given.',
@@ -145,7 +152,7 @@ export async function crossReferences(q: string, sources: Passage[], max: number
 export const isYesNo = (q: string) => /^\s*(can|could|does|do|did|is|are|was|were|will|would|should|shall|has|have|may|must)\b/i.test(q);
 
 /** Build the prompt from results already found (no second search). */
-export async function promptFrom(q: string, direct: Direct | null, passages: Passage[], nSources = 3, excerpt = 900, searchMs = 0): Promise<BuiltPrompt> {
+export async function promptFrom(q: string, direct: Direct | null, passages: Passage[], nSources = 3, excerpt = 900, searchMs = 0, convo?: Convo): Promise<BuiltPrompt> {
   const sources = selectSources(q, passages, nSources, direct?.title);
   const lines: string[] = [];
   if (direct) {
@@ -177,13 +184,18 @@ export async function promptFrom(q: string, direct: Direct | null, passages: Pas
   }
   // only a yes/no question starts with Yes or No ("Where is Waterdeep?" got "Yes, Waterdeep is…")
   const yesNo = isYesNo(q) ? '\n(This is a yes/no question: start your answer with Yes or No.)' : '';
-  return { instructions: INSTRUCTIONS, prompt: `Sources:\n${lines.join('\n\n')}\n\nQuestion: ${q}${yesNo}`, sources: [...sources, ...refs.map((r) => r.ref)], searchMs };
+  // a follow-up: the earlier exchange first, then the question as asked and what it stands for
+  const question = convo
+    ? `Question (a follow-up to the earlier one): ${convo.asked}${convo.asked.trim() !== q.trim() ? `\n(Meaning: ${q})` : ''}`
+    : `Question: ${q}`;
+  const history = convo ? historyText(convo.turns) : '';
+  return { instructions: INSTRUCTIONS, prompt: `${history}Sources:\n${lines.join('\n\n')}\n\n${question}${yesNo}`, sources: [...sources, ...refs.map((r) => r.ref)], searchMs };
 }
 
-export async function buildPrompt(q: string, nSources = 3, excerpt = 900): Promise<BuiltPrompt> {
+export async function buildPrompt(q: string, nSources = 3, excerpt = 900, convo?: Convo): Promise<BuiltPrompt> {
   const t0 = performance.now();
   const [direct, found] = await Promise.all([directAnswer(q).catch(() => null), ask(q, nSources + 2)]);
-  return promptFrom(q, direct, found.passages, nSources, excerpt, Math.round(performance.now() - t0));
+  return promptFrom(q, direct, found.passages, nSources, excerpt, Math.round(performance.now() - t0), convo);
 }
 
 // For checking prompts in a browser console (no effect on the app).

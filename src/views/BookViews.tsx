@@ -23,6 +23,7 @@ import { useAutolinked } from '../lib/autolink';
 import { AddSpellToCharacter } from './CharacterViews';
 import { AddToList } from './ListViews';
 import { ReplacedBanner } from './HomebrewViews';
+import { ExplainCard } from './ExplainCard';
 
 const PASS_KEY = 'rc.books.pass.hint';
 
@@ -251,6 +252,7 @@ export function BookEntryView({ book, anchor }: { book: string; anchor: string }
         {entry.kind === 'spell' && <AddSpellToCharacter title={entry.title} />}
         <AddToList item={{ key: mark.key, title: entry.title, href: mark.href, subtitle: mark.subtitle }} />
       </div>
+      <ExplainCard key={mark.key} title={entry.title} label={`${info?.short ?? book} p. ${entry.page}`} html={body} />
       {also.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">Also in:</span>

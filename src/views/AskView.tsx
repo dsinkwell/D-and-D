@@ -11,6 +11,8 @@ import { highlight } from '../lib/ask/highlight';
 import { whileBusy } from '../lib/busy';
 import { autoWrite, chooseEngine, engineLabel, prewarmWriter, writeAnswer, type Engine, type Written } from '../lib/ask/writer';
 import type { Passage } from '../lib/ask/engine';
+import { followUpQuery, rememberWritten, writtenFor } from '../lib/ask/followup';
+import type { Convo } from '../lib/ask/prompt';
 
 const EXAMPLES = [
   'What is the range of fireball?',
@@ -24,7 +26,8 @@ const EXAMPLES = [
 ];
 
 interface Answer {
-  q: string;
+  q: string; // what was searched (a follow-up rebuilt with the previous question's subject)
+  asked: string; // what was typed
   direct: Direct | null;
   list: ListAnswer | null;
   result: AskResult | null;
@@ -32,7 +35,7 @@ interface Answer {
   error?: string;
 }
 
-export async function answer(q: string): Promise<Answer> {
+export async function answer(q: string, asked = q): Promise<Answer> {
   const t0 = performance.now();
   const [direct, list, result] = await Promise.all([
     directAnswer(q).catch(() => null),
@@ -40,11 +43,14 @@ export async function answer(q: string): Promise<Answer> {
     ask(q, 8).catch((e) => ({ error: String(e?.message || e) }) as any),
   ]);
   const err = result && 'error' in result ? (result.error as string) : undefined;
-  return { q, direct, list, result: err ? null : result, ms: Math.round(performance.now() - t0), error: err };
+  return { q, asked, direct, list, result: err ? null : result, ms: Math.round(performance.now() - t0), error: err };
 }
 
 export default function AskView({ route }: { route: Route }) {
   const routeQ = route.query.get('q') || '';
+  // earlier questions of a follow-up thread, oldest first
+  const prevs = route.query.getAll('prev');
+  const prevKey = prevs.join('\u0001');
   const [q, setQ] = useState(routeQ);
   const [busy, setBusy] = useState(false);
   const [ans, setAns] = useState<Answer | null>(null);
@@ -76,15 +82,42 @@ export default function AskView({ route }: { route: Route }) {
     }
     let live = true;
     setBusy(true);
-    answer(routeQ.trim()).then((a) => {
-      if (!live) return;
-      setAns(a);
-      setBusy(false);
-    });
+    const asked = routeQ.trim();
+    // each earlier follow-up is resolved in turn, so a chain keeps its subject
+    // ("range of fireball" → "and the saving throw?" → "what about lightning bolt?")
+    const resolve = async () => {
+      if (!prevs.length) return asked;
+      let prev = prevs[0];
+      for (const p of prevs.slice(1)) prev = await followUpQuery(prev, p);
+      return followUpQuery(prev, asked);
+    };
+    resolve()
+      .then((searchQ) => answer(searchQ, asked))
+      .then((a) => {
+        if (!live) return;
+        setAns(a);
+        setBusy(false);
+      });
     return () => {
       live = false;
     };
-  }, [routeQ, model]);
+  }, [routeQ, prevKey, model]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const followUp = (text: string) => {
+    const t = text.trim();
+    if (!t || !ans) return;
+    const p = new URLSearchParams();
+    p.set('q', t);
+    for (const x of [...prevs, ans.asked].slice(-4)) p.append('prev', x);
+    navigate(`/ask?${p}`);
+  };
+  const threadHref = (i: number) => {
+    const p = new URLSearchParams();
+    p.set('q', prevs[i]);
+    for (const x of prevs.slice(0, i)) p.append('prev', x);
+    return `#/ask?${p}`;
+  };
+  const convo: Convo | undefined = prevs.length && ans ? { asked: ans.asked, turns: prevs.map((x) => ({ q: x, a: writtenFor(x) })) } : undefined;
 
   const submit = (text: string) => {
     const t = text.trim();
@@ -138,10 +171,24 @@ export default function AskView({ route }: { route: Route }) {
 
       {ans && (
         <div className={`ask-results ${busy ? 'stale' : ''}`} data-q={ans.q}>
+          {prevs.length > 0 && (
+            <p className="ask-thread">
+              Following up on{' '}
+              {prevs.map((x, i) => (
+                <span key={i}>
+                  {i ? ' → ' : ''}
+                  <a href={threadHref(i)}>“{x}”</a>
+                </span>
+              ))}
+              {ans.q !== ans.asked && <span className="muted"> · searched as “{ans.q}”</span>}
+            </p>
+          )}
           {engine && (
             <WriteCard
-              key={ans.q}
+              key={`${prevKey}|${ans.q}`}
               q={ans.q}
+              asked={ans.asked}
+              convo={convo}
               engine={engine}
               found={{ direct: ans.direct, passages: ans.result?.passages || [] }}
               auto={autoWrite() && !ans.list}
@@ -182,6 +229,8 @@ export default function AskView({ route }: { route: Route }) {
               )}
             </section>
           )}
+
+          <FollowUpBox key={`${prevKey}|${ans.asked}`} onAsk={followUp} disabled={busy} />
 
           {ans.error && <Notice kind="error">{ans.error}</Notice>}
 
@@ -274,7 +323,21 @@ export function AskModelSettings() {
 }
 
 /** Native app: "Write an answer" with Apple's on-device model, from the passages Ask found. */
-function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; found: { direct: Direct | null; passages: Passage[] }; auto: boolean }) {
+function WriteCard({
+  q,
+  asked,
+  convo,
+  engine,
+  found,
+  auto,
+}: {
+  q: string;
+  asked: string;
+  convo?: Convo;
+  engine: Engine;
+  found: { direct: Direct | null; passages: Passage[] };
+  auto: boolean;
+}) {
   const [state, setState] = useState<'idle' | 'writing' | 'done' | 'error'>('idle');
   const [text, setText] = useState('');
   const [sources, setSources] = useState<Passage[]>([]);
@@ -294,8 +357,9 @@ function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; foun
     setText('');
     setErr('');
     try {
-      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => (setSources(b.sources), setGiven(b.prompt)), found.passages.length ? found : undefined, engine));
+      const w = await whileBusy('write', () => writeAnswer(q, setText, (b) => (setSources(b.sources), setGiven(b.prompt)), found.passages.length ? found : undefined, engine, convo));
       setText(w.text);
+      rememberWritten(asked, w.text);
       setInfo(w);
       setState('done');
     } catch (e) {
@@ -337,5 +401,32 @@ function WriteCard({ q, engine, found, auto }: { q: string; engine: Engine; foun
         </button>
       )}
     </div>
+  );
+}
+
+/** "Ask a follow-up…": keeps the thread (the earlier questions travel in the URL). */
+function FollowUpBox({ onAsk, disabled }: { onAsk: (q: string) => void; disabled: boolean }) {
+  const [text, setText] = useState('');
+  return (
+    <form
+      className="searchbar askbar ask-followup"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onAsk(text);
+      }}
+    >
+      <Icon name="ask" />
+      <input
+        type="search"
+        enterKeyHint="go"
+        placeholder="Ask a follow-up…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        aria-label="Follow-up question"
+      />
+      <button type="submit" className="btn subtle ask-go" disabled={!text.trim() || disabled}>
+        Ask
+      </button>
+    </form>
   );
 }

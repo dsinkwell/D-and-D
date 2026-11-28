@@ -10,6 +10,7 @@ import { useAutolinked } from '../lib/autolink';
 import { AddSpellToCharacter } from './CharacterViews';
 import { AddToList } from './ListViews';
 import { ReplacedBanner } from './HomebrewViews';
+import { ExplainCard } from './ExplainCard';
 
 /** Plausible wiki titles for an SRD entry ("Dwarves" -> "Dwarf", "Magic Fang, Greater" -> "Greater magic fang"). */
 function wikiCandidates(e: Entry): string[] {
@@ -103,6 +104,7 @@ export default function EntryView({ id }: { id: string }) {
         {entry.c === 'spell' && <AddSpellToCharacter title={entry.t} />}
         <AddToList item={{ key: `srd:${entry.i}`, title: entry.t, href: `#/srd/e/${entry.i}`, subtitle: `${label} · SRD` }} />
       </div>
+      <ExplainCard key={entry.i} title={entry.t} label="SRD" html={body} />
       {inBooks.length > 0 && (
         <div className="crosslinks">
           <span className="muted small">In your books:</span>
