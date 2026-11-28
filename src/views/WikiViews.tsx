@@ -56,6 +56,18 @@ export function WikiHome() {
         <input type="search" enterKeyHint="search" placeholder="Search the Forgotten Realms Wiki…" value={q} onChange={(e) => setQ(e.target.value)} />
       </form>
 
+      <section>
+        <h2 className="section-title">Realms tools</h2>
+        <div className="pill-list">
+          <a className="pill" href="#/tools/calendar">
+            Calendar of Harptos
+          </a>
+          <a className="pill" href="#/tools/travel">
+            Travel time
+          </a>
+        </div>
+      </section>
+
       {recent.length > 0 && (
         <section>
           <h2 className="section-title">Recently read</h2>
