@@ -2831,3 +2831,16 @@ input.num {
     font-size: clamp(21px, 10px + 1.4vw, 32px);
   }
 }
+
+/* Ask: follow-up questions */
+.ask-thread {
+  font-size: var(--fs-small);
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.ask-thread a {
+  color: var(--link);
+}
+.ask-followup {
+  margin: 14px 0 18px;
+}

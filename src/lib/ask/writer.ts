@@ -3,7 +3,7 @@
 // model run with llama.cpp (ios/App/App/LocalWriterPlugin.swift). The web app has neither.
 import { registerPlugin } from '@capacitor/core';
 import { isNative } from '../platform';
-import { buildPrompt, promptFrom, type BuiltPrompt } from './prompt';
+import { buildPrompt, promptFrom, type BuiltPrompt, type Convo } from './prompt';
 import type { Direct } from './direct';
 import type { Passage } from './engine';
 
@@ -142,13 +142,14 @@ export async function writeAnswer(
   onSources?: (b: BuiltPrompt) => void,
   found?: { direct: Direct | null; passages: Passage[] }, // results the Ask search already has
   engine: Engine = { kind: 'apple' },
+  convo?: Convo, // a follow-up: q is the rebuilt question; the prompt also gets the earlier turns
 ): Promise<Written> {
   // small open models are easily led off by extra sources: give them at most 2 (Apple: 3)
   const n = engine.kind === 'local' ? 2 : 3;
   // Apple's model has room for longer excerpts (the deciding sentence of a long rule, e.g. the
   // +2 on a charge, is often past the first 900 characters)
   const excerpt = engine.kind === 'local' ? 900 : 1600;
-  const built = found ? await promptFrom(q, found.direct, found.passages, n, excerpt) : await buildPrompt(q, n, excerpt);
+  const built = found ? await promptFrom(q, found.direct, found.passages, n, excerpt, 0, convo) : await buildPrompt(q, n, excerpt, convo);
   onSources?.(built);
   const id = Math.random().toString(36).slice(2);
   const t0 = performance.now();
