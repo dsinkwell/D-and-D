@@ -23,7 +23,18 @@ exactly where work stopped and how to finish the step in progress.
   for misaligned book text, house rules off during the test), the iOS workflow's entitlement logging,
   and the step 2b extraction fixes below. None of it is deployed yet.
 
-## ✔ Update, 28 Nov: step 2b is finished
+## ✔ Update, 28 Nov (later): pack 20261128T0013 replaces 20261127T2310
+
+The team member's session compared every book's entries, kinds and tables with the pre-2b pack and found
+regressions in 20261127T2310 that the totals hid: 21 Monster Manual II monsters (the first under each letter:
+Abeil, Banshee… Yak Folk) filed as rules, class tables merged into one cell (CAdv Ninja levels 1–9, PHB Table
+1–1), 4 CS prestige classes + CW Exotic Weapon Master + LEoF Glorious Servitor + PHB Permanent Image losing their
+kinds, ELH Divine Emissary's headings and LEoF's staff descriptions swallowed into tables. Fixed in
+`extract.py` (commits bd7f8a4, b7f9473) and re-packed. Against the pre-2b pack: entries 20,851 → 20,872, tables
+2,305 → 2,424, no kind lost anything (class 62, prestige 268, spell 1,497, deity 148, trap 83; feat +5, item +10,
+monster +2); the 7 entries no longer marked as feats/items/monsters were mis-filed or had another entry's text.
+Ask quality (command line, search levels): **116/119** (20261127T2310: 115/119 on the same questions).
+
 
 The owner's session completed the rebuild and committed it to `v2` ("Books: rebuilt pack…", version
 20261127T2310). Verified: entry counts steady (20,851 → 20,855), the 6 PHB feats correct, FRCS/PoF/F&P tables

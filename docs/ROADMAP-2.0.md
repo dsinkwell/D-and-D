@@ -16,7 +16,13 @@ The original brainstorm is kept below the decisions.
 **Picked for 2.0, in this order**
 1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
 2. Ask quality test set, then cross-reference following.
-   - **2b — done on `v2` (28 Nov, pack 20261127T2310; not yet merged to `main`).** Captioned tables now read
+   - **2b — done on `v2` (28 Nov, pack 20261128T0013; not yet merged to `main`).** Re-packed after a full
+     per-book comparison with the pre-2b pack found regressions in 20261127T2310 (21 MM2 monsters, class tables
+     merged into one cell, several prestige classes filed as rules; all fixed — see HANDOFF.md). Entries
+     20,851 → 20,872, tables 2,305 → 2,424 (FRCS 2→37, MoF 1→26, LEoF 0→23, MIC 1→11, PoF 2→10, MotP 0→8, RoF
+     0→4; F&P, GHotR, MM2u still 0); Ask quality 116/119. Remaining gaps: FRCS Table 3–5 Weapons is not read as a
+     table and Table 3–3 Mundane Items has shifted columns (quality questions fr-tbl-chakram-range and
+     fr-tbl-khopesh-damage fail on it); the CS prestige classes are fixed. Earlier note for 20261127T2310: Captioned tables now read
      as tables (MoF 6→24/29, LEoF 16→23/35, FRCS 28→34/53, PoF 6→10/12; FRCS deity conversion and PoF/F&P
      prestige-class tables checked); PHB Combat Casting, Craft Rod, Craft Staff, Dodge, Run, Track carry their
      own text; entry counts steady (20,851 → 20,855); Ask quality 115/116 on the search levels. Leftovers: LEoF
