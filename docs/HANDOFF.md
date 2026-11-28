@@ -41,8 +41,8 @@ The owner's session completed the rebuild and committed it to `v2` ("Books: rebu
 read as tables, Ask quality 115/116 (the one miss: "What is a longsword?" picks MM3's Thorn, whose heading
 sits after its stat block). Two Ask excerpt fixes came with it (`highlight.ts`: a long run-in rule such as
 "Concealment Miss Chance: …" counts as a lead sentence; the sentence right before the excerpt is kept when
-it answers the question). **Nothing below needs doing.** Next: merge `v2` into `main` when the owner says so,
-then step 5 of the plan.
+it answers the question). **Nothing below needs doing.** `v2` was merged into `main` on 28 Nov with the user's OK (pack 20261128T0013,
+book names in the book filter menus, responsive type scale). Next: step 5 of the plan.
 
 ## (Done) step 2b — tables in 10 books + 6 misaligned PHB feats
 

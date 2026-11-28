@@ -16,7 +16,7 @@ The original brainstorm is kept below the decisions.
 **Picked for 2.0, in this order**
 1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
 2. Ask quality test set, then cross-reference following.
-   - **2b — done on `v2` (28 Nov, pack 20261128T0013; not yet merged to `main`).** Re-packed after a full
+   - **2b — done (28 Nov, pack 20261128T0013; merged into `main` 28 Nov).** Re-packed after a full
      per-book comparison with the pre-2b pack found regressions in 20261127T2310 (21 MM2 monsters, class tables
      merged into one cell, several prestige classes filed as rules; all fixed — see HANDOFF.md). Entries
      20,851 → 20,872, tables 2,305 → 2,424 (FRCS 2→37, MoF 1→26, LEoF 0→23, MIC 1→11, PoF 2→10, MotP 0→8, RoF
@@ -45,7 +45,7 @@ The original brainstorm is kept below the decisions.
 7. Forgotten Realms tools (Calendar of Harptos, travel distances).
 8. TestFlight invite for the group (as **internal testers**, no Beta App Review) + first-run guide.
 
-**Progress (branch `v2`, not yet merged to `main`)**
+**Progress (branch `v2`; merged into `main` on 27 Nov twice and 28 Nov)**
 - Done: tap-to-link (`src/lib/autolink.ts`; audited on all 27 books), tap-to-roll dice
   (`src/lib/rollers.ts`, `src/lib/dice.ts`, `src/DiceTray.tsx`; compact result bar, Adv./Dis. for the next d20).
 - Done: Ask quality test set (`src/lib/ask/quality-questions.ts`, runner `src/lib/ask/quality.ts`; About →
