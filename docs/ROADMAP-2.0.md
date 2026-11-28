@@ -16,7 +16,20 @@ The original brainstorm is kept below the decisions.
 **Picked for 2.0, in this order**
 1. Tap-to-link rules text; tap-to-roll dice (the dice tray includes **Advantage**: 2d20, keep the higher).
 2. Ask quality test set, then cross-reference following.
-   - **2b. MUST COME BACK TO (user asked, 27 Nov): table extraction for the 10 books whose tables are
+   - **2b — done (28 Nov, pack 20261128T0013; merged into `main` 28 Nov).** Re-packed after a full
+     per-book comparison with the pre-2b pack found regressions in 20261127T2310 (21 MM2 monsters, class tables
+     merged into one cell, several prestige classes filed as rules; all fixed — see HANDOFF.md). Entries
+     20,851 → 20,872, tables 2,305 → 2,424 (FRCS 2→37, MoF 1→26, LEoF 0→23, MIC 1→11, PoF 2→10, MotP 0→8, RoF
+     0→4; F&P, GHotR, MM2u still 0); Ask quality 116/119. Remaining gaps: FRCS Table 3–5 Weapons is not read as a
+     table and Table 3–3 Mundane Items has shifted columns (quality questions fr-tbl-chakram-range and
+     fr-tbl-khopesh-damage fail on it); the CS prestige classes are fixed. Earlier note for 20261127T2310: Captioned tables now read
+     as tables (MoF 6→24/29, LEoF 16→23/35, FRCS 28→34/53, PoF 6→10/12; FRCS deity conversion and PoF/F&P
+     prestige-class tables checked); PHB Combat Casting, Craft Rod, Craft Staff, Dodge, Run, Track carry their
+     own text; entry counts steady (20,851 → 20,855); Ask quality 115/116 on the search levels. Leftovers: LEoF
+     Table 1–1 Feats, MoF prestige-class tables without numbers, PoF "Giving Orders" (dot leaders); 4 Complete
+     Scoundrel prestige classes (Malconvoker, Magical Trickster, Spellwarp Sniper…) are filed as rules; MM3
+     Thorn's heading sits after its stat block. Original note:
+   - **2b. (was) MUST COME BACK TO (user asked, 27 Nov): table extraction for the 10 books whose tables are
      flattened into text** (FRCS, F&P, MoF, RoF, LEoF, PoF, GHotR, MotP, MIC, MM2u). Needs the PDFs from the
      user's Drive (ask them to share the folder by link), table detection in `scripts/books/extract.py`, and a
      re-pack with the passphrase. Then re-run the Ask quality test and add table questions from those books.
@@ -32,7 +45,7 @@ The original brainstorm is kept below the decisions.
 7. Forgotten Realms tools (Calendar of Harptos, travel distances).
 8. TestFlight invite for the group (as **internal testers**, no Beta App Review) + first-run guide.
 
-**Progress (branch `v2`, not yet merged to `main`)**
+**Progress (branch `v2`; merged into `main` on 27 Nov twice and 28 Nov)**
 - Done: tap-to-link (`src/lib/autolink.ts`; audited on all 27 books), tap-to-roll dice
   (`src/lib/rollers.ts`, `src/lib/dice.ts`, `src/DiceTray.tsx`; compact result bar, Adv./Dis. for the next d20).
 - Done: Ask quality test set (`src/lib/ask/quality-questions.ts`, runner `src/lib/ask/quality.ts`; About →

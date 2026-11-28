@@ -14,6 +14,9 @@ export interface Source {
   edition: string; // "3.5" | "3.0"
   srd?: boolean;
   homebrew?: boolean;
+  name?: string; // for menus: "Player's Handbook", "Magic of Faerûn (3.0)"
+  shelf?: string; // "Core Rules" / "Forgotten Realms" / "Supplements"
+  ord?: number;
 }
 
 export interface CatalogItem {
@@ -131,7 +134,7 @@ async function build(kind: Category): Promise<CatalogItem[]> {
 
 function addSrd(it: CatalogItem, e: Entry) {
   const m = e.m || {};
-  it.sources.push({ label: 'SRD', short: 'SRD', href: entryHref(e), edition: '3.5', srd: true });
+  it.sources.push({ label: 'SRD', short: 'SRD', name: 'SRD (3.5 reference)', href: entryHref(e), edition: '3.5', srd: true });
   it.summary ??= e.x;
   for (const [k, v] of Object.entries(m.lv || {})) it.lv[k] ??= v as number;
   it.school ??= m.school?.replace(/\s*\[.*\]/, '');
@@ -145,7 +148,7 @@ function addSrd(it: CatalogItem, e: Entry) {
 
 function addHomebrew(it: CatalogItem, r: HomebrewRecord) {
   const f = Object.fromEntries(r.data.fields.map(([k, v]) => [k.toLowerCase(), v]));
-  it.sources.push({ label: 'Homebrew', short: 'Homebrew', href: homebrewHref(r.id), edition: '3.5', homebrew: true });
+  it.sources.push({ label: 'Homebrew', short: 'Homebrew', name: 'Homebrew', href: homebrewHref(r.id), edition: '3.5', homebrew: true });
   it.summary ??= r.data.text.split(/(?<=[.!?])\s/)[0]?.slice(0, 200);
   // "Sor/Wiz 2, Clr 3" → spell levels (so homebrew spells appear in spellbooks)
   for (const m of (f.level || '').matchAll(/([A-Za-z/ ]+?)\s+(\d)\b/g)) it.lv[spellClass(m[1])] ??= Number(m[2]);
@@ -158,7 +161,7 @@ function addHomebrew(it: CatalogItem, r: HomebrewRecord) {
 
 function addBook(it: CatalogItem, e: BookEntry, b: BookInfo) {
   const m = e.meta || {};
-  it.sources.push({ label: `${b.short} p. ${e.page}`, short: b.short, href: bookEntryHref(e), book: b.id, page: e.page, edition: b.edition });
+  it.sources.push({ label: `${b.short} p. ${e.page}`, short: b.short, name: bookMenuName(b), shelf: b.shelf, ord: b.ord, href: bookEntryHref(e), book: b.id, page: e.page, edition: b.edition });
   it.summary ??= e.summary || undefined;
   for (const [k, v] of Object.entries(m.lv || {})) it.lv[spellClass(k)] ??= v as number;
   if (m.school) it.school ??= String(m.school).replace(/\s*[[(].*$/, '').trim();
@@ -230,11 +233,28 @@ function metaLine(it: CatalogItem): string {
 }
 
 /** Short names of the sources of a list, for the Source filter (books in shelf order, SRD first). */
-export function sourceOptions(items: CatalogItem[]): string[] {
-  const seen = new Set<string>();
-  for (const it of items) for (const s of it.sources) seen.add(s.short);
-  const all = [...seen];
-  return ['SRD', ...all.filter((s) => s !== 'SRD')].filter((s) => seen.has(s));
+// Book names for menus: the title wherever it fits comfortably on a phone (about 30 characters),
+// a shortened one otherwise, and the 3.0 books marked as such.
+const MENU_NAME: Record<string, string> = { frcs: 'FR Campaign Setting' };
+export const bookMenuName = (b: Pick<BookInfo, 'id' | 'title' | 'edition'>) =>
+  `${MENU_NAME[b.id] ?? b.title}${b.edition === '3.5' ? '' : ` (${b.edition})`}`;
+
+const SHELF_ORDER = ['Core Rules', 'Forgotten Realms', 'Supplements'];
+
+export interface SourceOption {
+  value: string; // the short code the list is filtered by ("PHB")
+  label: string; // "Player's Handbook"
+  group?: string; // the shelf, for <optgroup>
+}
+
+/** The sources in these items, for a book menu: SRD first, then the books by shelf and shelf order, homebrew last. */
+export function sourceOptions(items: CatalogItem[]): SourceOption[] {
+  const seen = new Map<string, Source>();
+  for (const it of items) for (const s of it.sources) if (!seen.has(s.short)) seen.set(s.short, s);
+  const rank = (s: Source) => (s.srd ? -1 : s.homebrew ? 99 : SHELF_ORDER.indexOf(s.shelf || '') + 1);
+  return [...seen.values()]
+    .sort((a, b) => rank(a) - rank(b) || (a.ord ?? 0) - (b.ord ?? 0) || (a.name || a.short).localeCompare(b.name || b.short))
+    .map((s) => ({ value: s.short, label: s.name || s.short, group: s.book ? s.shelf : undefined }));
 }
 
 // ------------------------------------------------------------------ unified search

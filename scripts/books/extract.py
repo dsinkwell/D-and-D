@@ -218,20 +218,27 @@ def order_blocks(blocks, W, H):
     if not blocks:
         return []
     narrow = [b for b in blocks if (b['bbox'][2] - b['bbox'][0]) < W * 0.55]
-    xs = sorted(b['bbox'][0] for b in narrow)
-    cols = []
-    for x in xs:
+    xs = sorted((b['bbox'][0], len(b['lines'])) for b in narrow)
+    cols, col_lines = [], []
+    for x, nl in xs:
         if cols and x - cols[-1][-1] < 30:
             cols[-1].append(x)
+            col_lines[-1] += nl
         else:
             cols.append([x])
+            col_lines.append(nl)
     # Keep only real columns: enough blocks/lines start there, and columns are well apart.
-    min_count = max(2, int(len(narrow) * 0.08))
+    # At least 3 blocks, or 2 blocks holding real text: a two-line illustration caption in the margin
+    # is not a column (PHB p. 93's "Lidda dodges…" made the right text column look wide and
+    # interleaved the two columns), but a heading plus one long block is (CS p. 49's "Class Features"
+    # column was read before the left column's "Malconvoker" heading when 3 blocks were required).
+    min_count = max(3, int(len(narrow) * 0.08))
+    min_count_long = max(2, int(len(narrow) * 0.08))
     # A column's edge is where its blocks start (a low percentile), not its leftmost member:
     # a page number or running header just left of a column must not drag the edge over.
     starts = []
-    for c in sorted(cols, key=lambda c: sorted(c)[len(c) // 5]):
-        if len(c) < min_count:
+    for c, nl in sorted(zip(cols, col_lines), key=lambda cl: sorted(cl[0])[len(cl[0]) // 5]):
+        if len(c) < min_count and not (len(c) >= min_count_long and nl >= 8):
             continue
         edge = sorted(c)[len(c) // 5]  # 20th percentile: ignores a stray page number, not indented lines
         if starts and edge - starts[-1] < W * 0.2:
@@ -387,6 +394,21 @@ def is_table_line(line, body_size):
     return gaps >= 1 and small
 
 
+def rows_follow(lines, li, body_size, look=4):
+    """Whether the lines just under a caption are already read as table rows. The first line is
+    often a column-heading line that never looks like a row (PHB class tables, CAdv's Ninja), so
+    look a few lines down: rebuilding such a table from word positions merged whole columns into
+    one cell, while the ordinary table path reads it correctly."""
+    if any(is_table_line(l, body_size) for l in lines[li + 1:li + 1 + look]):
+        return True
+    # by position too: in reading order the lines after a caption can come from another column
+    # (ELH Table 1–25's rows sit under its caption, but the next lines read were the other column's)
+    cx0, _, cx1, cy1 = lines[li]['bbox']
+    below = sorted((l for l in lines if cy1 - 2 <= l['bbox'][1] <= cy1 + 50 and l['bbox'][0] < cx1 and l['bbox'][2] > cx0),
+                   key=lambda l: l['bbox'][1])
+    return any(is_table_line(l, body_size) for l in below[:look + 2])
+
+
 def split_cells(line):
     cells, cur, last_x1 = [], [], None
     for s in line['spans']:
@@ -401,6 +423,182 @@ def split_cells(line):
     for c in cells:
         out.extend(x for x in re.split(r'\s{2,}', c) if x)  # “Fort  Ref  Will” set in one run
     return out
+
+
+def line_words(line):
+    """Words of a line with their positions: from character boxes when the PDF has them, else by
+    splitting each span's box in proportion to its text (OCR lines)."""
+    out = []
+    for s in line['spans']:
+        chars = s.get('chars')
+        if chars:
+            cur = None
+            for ch in chars:
+                if ch['c'].isspace():
+                    if cur:
+                        out.append(cur)
+                    cur = None
+                    continue
+                x0, y0, x1, y1 = ch['bbox']
+                if cur is None:
+                    cur = [x0, y0, x1, y1, ch['c']]
+                else:
+                    cur[2] = max(cur[2], x1)
+                    cur[1] = min(cur[1], y0)
+                    cur[3] = max(cur[3], y1)
+                    cur[4] += ch['c']
+            if cur:
+                out.append(cur)
+        else:
+            text = s['text']
+            x0, y0, x1, y1 = s.get('bbox') or line['bbox']  # OCR lines: one box for the whole line
+            n = max(1, len(text))
+            for m in re.finditer(r'\S+', text):
+                out.append([x0 + (x1 - x0) * m.start() / n, y0, x0 + (x1 - x0) * m.end() / n, y1, m.group()])
+    return out
+
+
+def is_caption_title(text):
+    """A real caption is a short label ("Table 1–4: Character Regions", "TABLE 3–1: THE GNOME
+    ARTIFICER"), not a sentence that mentions one ("Table 1–4: Character Regions describes…")."""
+    m = CAPTION.match(text)
+    if not m:
+        return False
+    rest = text[m.end():].strip()
+    lower = [w for w in re.findall(r"[A-Za-z’']+", rest) if w[0].islower() and w.lower() not in ('of', 'the', 'and', 'to', 'a', 'an', 'in', 'for', 'by', 'on', 'or', 'with', 'per', 'vs')]
+    return len(text) <= 90 and not lower and not rest.endswith(('.', ',', '-', '–'))
+
+
+def caption_table(lines, li, W, body_size, levels):
+    """The table printed under a caption, rebuilt from word positions: the lines below the
+    caption within its column (found by position, not reading order: some PDFs store each
+    column of a table as its own block), rows by height, columns where many rows start a word
+    after a clear gap. Used for books whose tables are set in ordinary text fonts.
+    Returns (table rows, set of line indices used) or None."""
+    cap = lines[li]
+    cx0, cy0, cx1, cy1 = cap['bbox']
+    # the caption's column: half the page when the other half has text beside it, else the whole width
+    left_half = cx1 < W * 0.55
+    right_half = cx0 > W * 0.45
+    beside = any(l['bbox'][1] < cy1 + 60 and l['bbox'][3] > cy0 and (l['bbox'][0] > W * 0.5 if left_half else l['bbox'][2] < W * 0.5) for l in lines)
+    if left_half and beside:
+        band = (0, W * 0.52)
+    elif right_half and beside:
+        band = (W * 0.48, W)
+    else:
+        band = (0, W)
+    cand = [(j, l) for j, l in enumerate(lines) if j != li and l['bbox'][1] >= cy1 - 2 and l['bbox'][0] >= band[0] - 2 and l['bbox'][2] <= band[1] + 4 and l['bbox'][0] >= cx0 - 12]
+    cand.sort(key=lambda x: (x[1]['bbox'][1], x[1]['bbox'][0]))
+    # group the candidate lines into rows by height, and stop where the table ends
+    rows_l = []
+    last_y = cy1
+    heights = []
+    for j, l in cand:
+        t = l['text'].strip()
+        x0, y0, x1, y1 = l['bbox']
+        h = y1 - y0
+        if rows_l and abs((y0 + y1) / 2 - rows_l[-1]['mid']) < h * 0.55:
+            rows_l[-1]['lines'].append((j, l))
+            rows_l[-1]['bottom'] = max(rows_l[-1]['bottom'], y1)
+            continue
+        med = sorted(heights)[len(heights) // 2] if heights else h
+        if CAPTION.match(t) or CREDIT.match(t):
+            break
+        if y0 - last_y > max(med * 2.2, 12):
+            break
+        st = line_style(l)
+        if levels.get(st) and st[1] > body_size * 1.1:
+            break
+        # a short heading standing alone on its row ends the table (ELH Table 1–25 read on into the
+        # next column and swallowed Divine Emissary's "Class Skills" / "Class Features" headings);
+        # a bold column-heading row has other words beside it
+        if levels.get(st) and len(rows_l) >= 2 and len(t.split()) <= 5 and not any(
+                j2 != j and abs((l2['bbox'][1] + l2['bbox'][3]) / 2 - (y0 + y1) / 2) < h * 0.55 for j2, l2 in cand):
+            break
+        rows_l.append({'mid': (y0 + y1) / 2, 'bottom': y1, 'lines': [(j, l)]})
+        heights.append(h)
+        last_y = max(last_y, y1)
+    # running text after the table: a row that is one wide, gapless line ending a sentence
+    cut = len(rows_l)
+    for k, r in enumerate(rows_l):
+        if k >= 3 and len(r['lines']) == 1:
+            l = r['lines'][0][1]
+            ws = line_words(l)
+            gaps = [b[0] - a[2] for a, b in zip(ws, ws[1:])]
+            # (a wrapped sentence line rarely ends in "." — LEoF Table 10–5 ran on into the staff
+            # descriptions — so a long gapless line counts too: real rows have gaps between columns)
+            if (l['bbox'][2] - l['bbox'][0]) > (band[1] - band[0]) * 0.75 and (not gaps or max(gaps) < body_size * 0.6) and (
+                    l['text'].strip().endswith(('.', ':')) or len(ws) >= 9):
+                cut = k
+                break
+            # a description opening with a bold run-in name ("Lesser Staff of Silverymoon: Alustriel…")
+            s0 = l['spans'][0]
+            if re.match(r'^[A-Z][^:]{2,60}:\s', l['text'].strip()) and s0['text'].strip() and (BOLD.search(s0['font']) or s0['font'] in LEAD_FONTS):
+                cut = k
+                break
+    rows_l = rows_l[:cut]
+    if len(rows_l) < 3:
+        return None
+    rows = []
+    for r in rows_l:
+        ws = sorted((w for _, l in r['lines'] for w in line_words(l)), key=lambda w: w[0])
+        rows.append(ws)
+    # column starts: a word after a gap of at least ~1.5 spaces, seen in many rows
+    gap_min = body_size * 0.45
+    starts = collections.Counter()
+    for ws in rows:
+        prev = None
+        for w in ws:
+            if prev is None or w[0] - prev[2] > gap_min:
+                starts[round(w[0] / 3)] += 1
+            prev = w
+    need = max(2, int(len(rows) * 0.3))
+    anchors = sorted(k * 3 for k, n in starts.items() if n >= need)
+    merged = []
+    for a in anchors:
+        if merged and a - merged[-1] < 9:
+            continue
+        merged.append(a)
+    if len(merged) < 2:
+        return None
+    merged[0] = min(merged[0], min(w[0] for ws in rows for w in ws))
+    # heading rows (above the first row with numbers in it) are often centred over their columns:
+    # their words go to the column whose middle is nearest, data words to the column they start in
+    right = max(w[2] for ws in rows for w in ws)
+    mids = [(a + (merged[i + 1] if i + 1 < len(merged) else right)) / 2 for i, a in enumerate(merged)]
+    numeric = lambda ws: bool(ws) and (bool(re.match(r'^([+\-–]?\d+(st|nd|rd|th)?|\d+[–-]\d+)$', ws[0][4])) or sum(1 for w in ws if re.search(r'\d', w[4])) >= len(ws) * 0.6)
+    first_data = next((k for k, ws in enumerate(rows) if numeric(ws)), 0)
+    table = []
+    for ri, ws in enumerate(rows):
+        cells = [''] * len(merged)
+        for w in ws:
+            if ri < first_data and first_data <= 4:
+                k = min(range(len(mids)), key=lambda i: abs((w[0] + w[2]) / 2 - mids[i]))
+            else:
+                k = max([i for i, a in enumerate(merged) if a <= w[0] + 3] or [0])
+            cells[k] = (cells[k] + ' ' + w[4]).strip()
+        if table and not cells[0] and any(cells) and not (ri < first_data and first_data <= 4):
+            table[-1] = [(a + ' ' + b).strip() for a, b in zip(table[-1], cells)]  # a wrapped line
+        elif any(cells):
+            table.append(cells)
+    # several heading rows above the first data row become one heading row
+    heads = min(first_data, len(table) - 1) if first_data <= 4 else 0
+    if heads >= 2:
+        table[:heads] = [[' '.join(x for x in col if x).strip() for col in zip(*table[:heads])]]
+    # column headings set on two or three lines: leading rows with an empty first cell belong
+    # to the heading row below them ("El Sadimmin and El Nallojal (Army and Navy" / "of Calimshan)")
+    while len(table) > 2 and not table[0][0] and table[1][0]:
+        table[1] = [(a + ' ' + b).strip() for a, b in zip(table[0], table[1])]
+        table.pop(0)
+    multi = sum(1 for r in table if sum(1 for c in r if c) >= 2)
+    if len(table) < 2 or multi < max(2, len(table) * 0.5):
+        return None
+    # prose read as a table (long sentences in most cells) is not a table
+    cells = [c for r in table for c in r if c]
+    if sum(1 for c in cells if len(c.split()) > 12) > len(cells) * 0.3:
+        return None
+    used = {j for r in rows_l for j, _ in r['lines']}
+    return table, used
 
 
 def build_stream(pages, body_size, levels, page_offset=0, toc=None):
@@ -450,8 +648,9 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
             flush(); flush_table()
             stream.append({'t': 'h', 'level': lvl_t, 'text': title, 'page': pno, 'bm': True})
         skip_until = -1
+        consumed = set()  # lines already read into a table under a caption
         for li, l in enumerate(lines):
-            if li <= skip_until:
+            if li <= skip_until or li in consumed:
                 continue
             if li in pending:
                 flush(); flush_table()
@@ -461,6 +660,13 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                     used = max(used, n)
                 skip_until = li + used - 1
                 prev_bottom = lines[skip_until]['bbox'][3]
+                # a bookmarked table caption ("Table 2-1: Sample Ranks of Faerûn"): read the table under it
+                if any(is_caption_title(title) for _, title, _ in pending[li]) and skip_until + 1 < len(lines) and not rows_follow(lines, skip_until, body_size):
+                    got = caption_table(lines, skip_until, W, body_size, levels)
+                    if got:
+                        rows, used_lines = got
+                        stream.append({'t': 'table', 'rows': rows, 'page': pno})
+                        consumed |= used_lines
                 continue  # the matched line is the heading itself
             text = l['text'].strip()
             y0, y1 = l['bbox'][1], l['bbox'][3]
@@ -475,6 +681,14 @@ def build_stream(pages, body_size, levels, page_offset=0, toc=None):
                 flush(); flush_table()
                 stream.append({'t': 'cap', 'text': text, 'page': pno})
                 prev_bottom = y1
+                # books whose tables are set in body fonts: rebuild the table under the caption
+                # from word positions, when the lines that follow aren't recognised as table rows
+                if is_caption_title(text) and li + 1 < len(lines) and not rows_follow(lines, li, body_size):
+                    got = caption_table(lines, li, W, body_size, levels)
+                    if got:
+                        rows, used_lines = got
+                        stream.append({'t': 'table', 'rows': rows, 'page': pno})
+                        consumed |= used_lines
                 continue
             if re.match(r'^\[[A-Za-z ,\-]+\]$', text) and para is None and table is None and stream and stream[-1]['t'] == 'h' and stream[-1]['page'] == pno:
                 if not re.search(r'\[[^\]]+\]\s*$', stream[-1]['text']):
@@ -953,6 +1167,13 @@ def place_bookmarks(pages, toc, levels, page_offset=0):
             if len(t) < len(nt) and li + 1 < len(texts):
                 r2 = difflib.SequenceMatcher(None, nt, (t + texts[li + 1])[:len(nt) + 6]).ratio()
             r, n = (r2, 2) if r2 > r1 + 0.05 else (r1, 1)
+            # a short title starting a heading line ("dodge" → "dodgegeneral" from "DODGE [GENERAL]"):
+            # the ratio alone (0.62 for Dodge) misses it, and "track" matched "stack." instead.
+            # The title must end at a word boundary in the printed line: MM2's letter bookmark "A"
+            # otherwise took the "ABEIL" heading line, pushing every letter's first monster off its stats.
+            if t == nt or (len(nt) >= 3 and t.startswith(nt) and styles[li] in levels
+                           and re.match(r'\W*' + re.escape(title.strip()) + r'(?![^\W\d_])', lines[li]['text'], re.I)):
+                r, n = max(r, 0.95), 1
             if r < 0.66:
                 continue
             heading = styles[li] in levels
