@@ -58,6 +58,7 @@ Plan and the user's decisions: **`docs/ROADMAP-2.0.md`**. Step 2b (table extract
 
 ## Architecture (current)
 
+- **Two panes on wide screens (≥1100px: iPad landscape, Mac; `src/lib/pane.ts`, `App.tsx`):** list routes (search, ask, a category, a book's contents, lists, Saved, wiki home) stay in a left pane that scrolls on its own; detail routes (SRD/book entries, wiki articles, homebrew) open on the right; the open item is highlighted (`a.is-current`). A book section not in the left list switches the left pane to its book's contents. List views in the left pane must not rewrite the URL: use `useListNavigate()` / `usePane()` for their own state (search text, filters). Phones and iPad portrait are unchanged.
 - `src/`: React + Vite + vite-plugin-pwa app. Hash routes: `#/` search, `#/ask?q=`, `#/rules`, `#/srd/e/<doc>/<anchor>`, `#/wiki/<Title>`, `#/library`, `#/saved`, `#/about`.
 - **SRD (built in, done):** `vendor/srd-md/` (OGL Markdown) → `scripts/build-srd.mjs` → `public/srd/*.json` (about 4,470 entries with spell/feat/monster/item metadata, MiniSearch index). Runs automatically on `npm run dev` / `npm run build`.
 - **Offline database engine (done, tested in Chromium):** `src/workers/sqlite.worker.ts` (official `@sqlite.org/sqlite-wasm`, `opfs-sahpool` VFS) plus `src/lib/db.ts`. It installs packed DBs from `public/data/<name>/manifest.json` + `part-NNN.bin` (gzip parts, optional AES-GCM encryption with a PBKDF2 passphrase) produced by `scripts/lib/pack.mjs`. DB files are versioned in OPFS as `/<name>@<version>.db`.

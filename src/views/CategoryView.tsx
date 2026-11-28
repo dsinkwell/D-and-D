@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { useListNavigate } from '../lib/pane';
 import { Header, Loading, StarToggle, PinButton } from '../components';
 import { keyForHref } from '../lib/bookmarks';
 import { navigate, Route } from '../lib/router';
@@ -19,12 +20,13 @@ export default function CategoryView({ cat, route }: { cat: string; route: Route
     catalog(cat as Category).then(setAll).catch(() => setAll([]));
   }, [cat]);
 
+  const listNavigate = useListNavigate();
   const f = (k: string) => route.query.get(k) || '';
   const setF = (k: string, v: string) => {
     const p = new URLSearchParams(route.query);
     if (v) p.set(k, v);
     else p.delete(k);
-    navigate(`/rules/${cat}${p.toString() ? `?${p}` : ''}`, true);
+    listNavigate(`/rules/${cat}${p.toString() ? `?${p}` : ''}`);
   };
 
   const [text, setText] = useState(f('q'));

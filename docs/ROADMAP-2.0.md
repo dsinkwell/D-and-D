@@ -42,7 +42,7 @@ The original brainstorm is kept below the decisions.
    entries, on one shared saved-data format. Sharing by **file** (option A below).
 4. iCloud sync across each person's own devices (native app only; the web app keeps data per device).
 5. Follow-up questions, then "Explain this" on any entry.
-6. iPad/Mac layout (stays sixth).
+6. iPad/Mac layout — **first version on `v2` (28 Nov):** two panes on screens ≥1100px (list left, entry right); type scales with the screen. To do: highlight in long book contents, try on the user's iPad and Mac.
 7. Forgotten Realms tools (Calendar of Harptos, travel distances).
 8. TestFlight invite for the group (as **internal testers**, no Beta App Review) + first-run guide.
 
